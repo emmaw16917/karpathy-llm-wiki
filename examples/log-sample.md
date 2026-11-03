@@ -1,6 +1,6 @@
 # Wiki Log
 
-<!-- Format: ## [YYYY-MM-DD] <action> | <subject>. Actions: ingest / query / lint. Ingest entries record Disposition and Raw; cascade updates use - Updated: sub-items. Append-only. -->
+<!-- Format: ## [YYYY-MM-DD] <action> | <subject>. Actions: ingest / re-extract / query / lint. Ingest entries record Disposition and Raw; cascade updates use - Updated: sub-items. Append-only. -->
 
 ## [2026-04-12] ingest | Build in Public content framework
 - Disposition: New

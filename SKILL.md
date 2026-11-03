@@ -1,6 +1,6 @@
 ---
 name: karpathy-llm-wiki
-description: "Use when building or maintaining a personal LLM-powered knowledge base. Triggers: ingesting sources into a wiki, querying wiki knowledge, linting wiki quality, 'add to wiki', 'what do I know about', or any mention of 'LLM wiki' or 'Karpathy wiki'."
+description: "Use when building or maintaining a personal LLM-powered knowledge base. Triggers: ingesting papers, Zotero items, blog posts, or other sources into a wiki, querying wiki knowledge, linting wiki quality, 'add to wiki', 'what do I know about', or any mention of 'LLM wiki' or 'Karpathy wiki'."
 ---
 
 # Karpathy LLM Wiki
@@ -15,15 +15,15 @@ Core ideas from Karpathy:
 
 Three layers, all under the user's project root:
 
-**raw/** — Immutable source material. You read, never edit by hand. The only permitted change is a logged re-extraction (see Re-extracting a raw file). Organized by topic subdirectories (e.g., `raw/machine-learning/`). Images live in `raw/assets/<raw-file-stem>/`.
+**raw/** — Immutable source material. You read, never edit by hand. The only permitted change is a logged re-extraction (see Re-extracting a raw file). Organized by topic subdirectories (e.g., `raw/machine-learning/`). Images live in `raw/assets/<raw-file-stem>/`; `assets` is not a topic.
 
-**wiki/** — Compiled knowledge articles. You have full ownership. Organized by topic subdirectories, one level only: `wiki/<topic>/<article>.md`. Contains two special files:
+**wiki/** — Compiled knowledge articles. You have full ownership. Organized by topic subdirectories, one level only: `wiki/<topic>/<article>.md`. Each topic holds source articles named by citekey, an `overview.md`, and optional `concept-<name>.md` pages. Contains two special files:
 - `wiki/index.md` — Global index. One row per article, grouped by topic, with link + summary + Updated date.
 - `wiki/log.md` — Append-only operation log.
 
 **SKILL.md** (this file) — Schema layer. Defines structure and workflow rules.
 
-Templates live in `references/` relative to this file. Read them when you need the exact format for raw files, articles, archive pages, or the index.
+Templates live in `references/` relative to this file. Read them when you need the exact format for raw files, source articles, overviews, concept pages, archive pages, or the index.
 
 ### Initialization
 
@@ -48,32 +48,27 @@ Fetch a source into raw/, then compile it into wiki/ — unless the source adds 
 
 ### Fetch (raw/)
 
-1. Get the source content. For papers, use the extractor (see Extracting papers). For web pages and other files, use whatever web or file tools your environment provides. If nothing can reach the source, ask the user to paste it directly.
+1. Pick the topic: the problem domain the source addresses (see Papers and topics). Check existing `raw/` subdirectories first, ignoring `assets`. Create a new one only for a genuinely distinct problem domain.
 
-2. Pick a topic directory. Check existing `raw/` subdirectories first; reuse one if the topic is close enough. Create a new subdirectory only for genuinely distinct topics.
+2. Run the extractor for papers and web pages (see Extracting sources). It names the file `raw/<topic>/<citekey>.md`.
 
-3. Save as `raw/<topic>/YYYY-MM-DD-descriptive-slug.md`.
-   - Slug from source title, kebab-case, max 60 characters.
-   - Published date unknown → omit the date prefix from the file name (e.g., `descriptive-slug.md`). The metadata Published field still appears; set it to `Unknown`.
-   - If a file with the same name already exists, append a numeric suffix (e.g., `descriptive-slug-2.md`).
-   - Include metadata header: source URL, collected date, published date.
-   - Preserve original text. Clean formatting noise. Do not rewrite opinions.
+3. For anything the extractor cannot reach, such as pasted text or a local document, ask the user for the content or use your file tools. Save it as `raw/<topic>/<citekey>.md` with the same front matter, built as the extractor does: surname, first three title words, year. Preserve original text. Clean formatting noise. Do not rewrite opinions. See `references/raw-template.md`.
 
-   See `references/raw-template.md` for the exact format.
+### Extracting sources
 
-### Extracting papers
-
-Use the extractor for any paper in Zotero or on arXiv. It writes the raw file, its header, and its images, so do not write or edit them yourself:
+Use the extractor for any paper or web page. It writes the raw file, its header, and its images, so do not write or edit them yourself:
 
 ```
 uv run --project <skill-dir> llm-wiki-extract --key <zotero-key> --out raw/<topic> --config <skill-dir>/config.json
 ```
 
-Instead of `--key`, you can pass `--doi`, `--title`, or `--arxiv <id>`. Zotero must be running with its local API enabled, unless you use `--arxiv`.
+Instead of `--key`, you can pass `--doi`, `--title`, `--arxiv <id>`, or `--url <page>`. Zotero must be running with its local API enabled, unless you use `--arxiv` or `--url`.
 
-The file is named `<citekey>.md`, which replaces the dated file name for papers. Its YAML front matter holds `citekey`, `zotero_key`, `title`, `authors`, `published` (the publication date), `venue`, `doi`, and `arxiv`. If `venue` is not a short name such as `ASE 2019`, pass `--venue "<name year>"`. Front matter is not evidence: `scripts/check_evidence.py` ignores it, so a fact stated only there cannot ground an article.
+The file is named `<citekey>.md`. Its YAML front matter holds `citekey`, `zotero_key`, `title`, `authors`, `published` (the publication date), `venue`, and, where they apply, `doi`, `arxiv`, and `url`. If `venue` is not a short name such as `ASE 2019`, pass `--venue "<name year>"`. Pass `--name <key>` to replace a poor citekey. Front matter is not evidence: `scripts/check_evidence.py` ignores it, so a fact stated only there cannot ground an article.
 
-The extractor tries these routes in order and records the one it used in the Extractor field:
+Web pages and Zotero `webpage`, `blogPost`, and `forumPost` items use Defuddle, which needs Node.js. A stored Zotero snapshot is preferred over the live page. If Zotero's citekey is poor, such as `zotero-29`, the extractor builds one from the author, title, and year. Web pages have no PDF, so they get no Verification field.
+
+For papers, the extractor tries these routes in order and records the one it used in the Extractor field:
 
 1. arXiv HTML. A published item may use its arXiv version when the title and first author match; the header then carries a Version-note.
 2. A public PDF of the published version through MinerU. Pass `--pdf-url` to name a clean copy.
@@ -130,39 +125,39 @@ After saving the raw file and before editing wiki/, search wiki/ with the source
 - **New** — creates one or more new articles.
 - **Update** — merges into existing article(s).
 - **Disputed** — contradicts existing content; may combine with New or Update (see Compile for conflict annotation).
-- **No material** — adds no knowledge beyond what the wiki already holds. Keep the raw file, log it (see Post-Ingest), and stop. Do not force an article out of a thin source.
+- **No material** — only a duplicate version of a source the wiki already has. Keep the raw file, log it (see Post-Ingest), and stop. A source the user chose always gets its own article, even if it adds little.
 
 New, Update, and Disputed may be combined. No material is exclusive.
 
 ### Compile (wiki/)
 
-Determine where the new content belongs:
-
-- **Same core thesis as existing article** → Merge into that article. Add the new source to Sources/Raw. Update affected sections.
-- **New concept** → Create a new article in the most relevant topic directory. Name the file after the concept, not the raw file.
-- **Spans multiple topics** → Place in the most relevant directory. Add See Also cross-references to related articles elsewhere.
-
-These are not mutually exclusive. A single source may warrant merging into one article while also creating a separate article for a distinct concept it introduces. In all cases, check for factual conflicts: if the new source contradicts existing content, mark the contested claims with a **Status: Disputed** block (see `references/article-template.md`). When the conflicting content lives in separate articles, mark both and cross-link them.
+Every source gets one article at `wiki/<topic>/<citekey>.md`. Sources are never merged into one another; shared knowledge goes in the overview and concept pages (see Papers and topics). In all cases, check for factual conflicts: if the new source contradicts existing content, mark the contested claims with a **Status: Disputed** block (see `references/article-template.md`). When the conflicting content lives in separate articles, mark both and cross-link them.
 
 **Source fidelity.** Every number, date, and direct quote must be located in the raw file (grep or read) *before* it is written; write the value exactly as found — if the source says 42K, write 42K, not 42,000. Derived values (sums, deltas, counts you computed) must show their components so each component is findable in raw. If you cannot locate a value, do not write its exact form; drop it or state it without precision.
 
+**Which raw files to link.** The Raw field lists every raw file holding a fact the article states, including facts inside Status blocks. Sources need not be in the library:
+
+- Another source is in raw/, and the fact comes from it → add it to Raw.
+- The other source is not in raw/, but the current source describes it → link only the current source, and attribute the claim: "According to Denum, LogReducer introduced the elastic encoder". This verifies what Denum says, not what LogReducer did.
+- No raw file holds the fact → do not state it. You may suggest ingesting that source.
+
 #### Papers and topics
 
-Write wiki articles in English, staying close to the paper's own wording.
+Write wiki articles in English, staying close to the source's own wording.
 
 **Topics.** A topic is a problem domain: the problem a paper solves, not the method it uses. A paper applying learned indexes to log compression belongs to `log-compression`. Do not add subtopics by default; group approaches as sections inside the overview. If one direction outgrows its overview, ask the user before splitting it.
 
 **Choosing a topic.** Each paper has exactly one primary topic, chosen by its core contribution and main evaluation metric. If that is unclear, ask the user. Record a second domain in `also` only when the paper truly solves that problem too; that domain's overview then gets a short section linking to the article, without repeating it. Do not mention a paper in a method domain's overview unless it advances that method.
 
-**Paper articles.** Follow `references/paper-template.md`, at `wiki/<topic>/<citekey>.md`. Keep each paper's specifics here: its method, its experiments, and its results. Keep your own analysis in Limitations and Open Doubts, separate from the authors' claims.
+**Source articles.** Follow `references/paper-template.md` for papers and technical blog posts alike, at `wiki/<topic>/<citekey>.md`. A blog post keeps the same sections, with its main approach or argument as the method. Its Evaluation lists only the evidence it gives, or states `No systematic evaluation reported`. Keep each source's specifics here: its method, its experiments, and its results. Keep your own analysis in Limitations and Open Doubts, separate from the authors' claims.
 
 **Topic overviews.** Follow `references/overview-template.md`, at `wiki/<topic>/overview.md`. Create one when a topic gets its second paper, and update it with each later paper. Place content with this test: if a new paper could change a statement, it belongs in the overview; otherwise it belongs in the paper article.
 
 Overviews compare methods and evaluation design only. Do not put experimental results in an overview, and never rank methods across papers: datasets, versions, kernels, and environments differ. Link to the articles for numbers.
 
-**Non-paper sources** follow the general article format below.
+**Concept pages.** A technique that recurs across articles, such as an encoding, can get a page at `wiki/<topic>/concept-<name>.md`, under the problem domain that uses it most. Follow `references/concept-template.md`. Overviews compare methods; concept pages explain one technique. Create one only when the user asks, or approves a Lint suggestion.
 
-See `references/article-template.md` for article format. Key points:
+Format reference for all article types (`references/article-template.md` defines Status blocks). Key points:
 - Sources field: author, organization, or publication name + date, semicolon-separated.
 - Raw field: markdown links to raw/ files, semicolon-separated.
 - Relative paths from `wiki/<topic>/` use `../../raw/<topic>/<file>.md` (two levels up to project root).
@@ -289,7 +284,7 @@ These rely on your judgment. Report findings without auto-fixing:
 - Malformed Status blocks (Outdated missing its date, or either block missing its explanation; format reference: `references/article-template.md`)
 - Orphan pages with no inbound links from other wiki articles
 - Missing cross-topic references
-- Concepts frequently mentioned but lacking a dedicated page
+- Concepts mentioned in three or more source articles without a concept page (suggest them; create one only if the user approves)
 - Archive pages whose cited source articles have been substantially updated since archival
 
 ### Post-Lint
@@ -308,4 +303,4 @@ Append to `wiki/log.md`:
 - wiki/ supports one level of topic subdirectories only. No deeper nesting.
 - Today's date for log entries, Collected dates, and Archived dates. Updated dates reflect when the article's knowledge content last changed. Published dates come from the source (use `Unknown` when unavailable).
 - Inside wiki/ files, all markdown links use paths relative to the current file. In conversation output, use project-root-relative paths (e.g., `wiki/topic/article.md`).
-- Ingest updates both `wiki/index.md` and `wiki/log.md` (a No material ingest updates only the log). Archive (from Query) updates both. Lint updates `wiki/log.md` (and `wiki/index.md` only when auto-fixing index entries). Plain queries do not write any files.
+- Ingest updates both `wiki/index.md` and `wiki/log.md` (a No material ingest updates only the log). Re-extraction updates `wiki/log.md`. Archive (from Query) updates both. Lint updates `wiki/log.md` (and `wiki/index.md` only when auto-fixing index entries). Plain queries do not write any files.

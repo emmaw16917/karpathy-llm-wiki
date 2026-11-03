@@ -14,6 +14,18 @@
 
 `karpathy-llm-wiki` packages [Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) into one installable [Agent Skills](https://agentskills.io) skill. Your coding agent ingests sources into `raw/`, compiles durable knowledge pages into `wiki/`, answers questions with citations, and lints the wiki for consistency.
 
+## About This Fork
+
+This fork of [Astro-Han/karpathy-llm-wiki](https://github.com/Astro-Han/karpathy-llm-wiki) (MIT) adds a paper-centered workflow. The rest of this README describes the upstream project unless a section says otherwise.
+
+- **Extraction:** `llm-wiki-extract` turns Zotero items, arXiv papers, and web pages into `raw/` files. It uses arXiv HTML and LaTeX, then MinerU for PDFs, and Defuddle for web pages, and checks PDF extractions against the text layer.
+- **Wiki structure:** one article per source, named by citekey, one primary topic per problem domain, plus method-comparing overviews and optional concept pages.
+- **Re-extraction:** `--replace` swaps a raw file only after a successful extraction, and records the old file's hash.
+
+To use the extractor, install [uv](https://docs.astral.sh/uv/), copy `config.example.json` to `config.json`, and add your MinerU token. Web pages also need Node.js. Zotero items need the Zotero local API enabled. Install this fork by cloning it into your tool's skill directory, for example `.claude/skills/karpathy-llm-wiki/`.
+
+`--replace` deletes the old raw file, so keep your knowledge base in its own private git repository. Do not store it in this repository.
+
 ## What Is an LLM Wiki?
 
 An **LLM wiki** is a knowledge system where the LLM maintains structured wiki pages instead of re-searching raw documents on every question. New sources are compiled into durable markdown pages, cross-references are updated over time, and answers cite the wiki pages that already contain the synthesized knowledge.
@@ -83,11 +95,14 @@ The core idea from Karpathy: the LLM maintains the wiki while the human focuses 
 
 ```text
 your-project/
-├── raw/            ← Immutable source material
+├── raw/            ← Source material, changed only by logged re-extraction
+│   ├── assets/citekey/
 │   └── topic/
-│       └── 2026-04-03-source-article.md
+│       └── citekey.md
 ├── wiki/           ← Compiled knowledge pages maintained by the LLM
 │   ├── topic/
+│   │   ├── citekey.md
+│   │   ├── overview.md
 │   │   └── concept-name.md
 │   ├── index.md    ← Global table of contents
 │   └── log.md      ← Append-only operation log
@@ -125,7 +140,7 @@ The workflow is based on a real knowledge base with 94 articles and 99 sources m
 
 Deliberately not built, after three months of production logs and a survey of the ecosystem (LLM Wiki v2, llm-wiki-compiler, OKF, agent-memory literature):
 
-- **Source-hash freshness tracking** — raw/ is immutable, so hashes guard against events that cannot happen. Genuinely new information arrives as new sources through normal ingest.
+- **Source-hash freshness tracking** (upstream) — upstream's raw/ is immutable, so hashes guard against events that cannot happen. This fork allows logged re-extraction, and records the replaced file's hash in that file's header and in the log, without any freshness tracking.
 - **Persisted line-number citations** — every observed fidelity error was "value absent from the source", which a whole-file grep catches. Anchors only disambiguate a failure mode that has not occurred, and the annotation friction makes agents skip the rule.
 - **Numeric confidence or quality scores** — false precision with no calibration behind it. Evidence strength belongs in the prose.
 - **Per-article review dates** — nobody can predict at compile time how fast a domain moves. Maintenance is driven by whole-wiki lint, not per-page timers.

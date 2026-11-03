@@ -99,6 +99,16 @@ def pdf_attachment(base, item_key, data_dir):
     return None
 
 
+def html_attachment(base, item_key, data_dir):
+    """Return the item's stored web snapshot, or None."""
+    for child in _get(base, f"items/{item_key}/children"):
+        data = child["data"]
+        if (data.get("itemType") == "attachment" and data.get("contentType") == "text/html"
+                and data.get("linkMode") in ("imported_file", "imported_url") and data.get("filename")):
+            return Attachment(child["key"], Path(data_dir) / "storage" / child["key"] / data["filename"])
+    return None
+
+
 def arxiv_id(item):
     """Return the arXiv id recorded on the item, without any version suffix."""
     patterns = [

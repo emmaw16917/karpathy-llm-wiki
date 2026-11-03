@@ -4,6 +4,7 @@ Route order: arXiv HTML, public PDF through MinerU, then the Zotero PDF
 uploaded to MinerU. Exit codes: 0 written, 2 error, 3 no usable route.
 """
 import argparse
+import base64
 import hashlib
 import http.client
 import json
@@ -19,11 +20,12 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
 
-from . import arxiv, cleanup, latex_source, metadata, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
+from . import arxiv, cleanup, latex_source, metadata, mineru, net, openalex, pdf_check, quality, tables, verify, web, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
 ARXIV_DOI_PREFIX = "10.48550/arxiv."
+WEB_TYPES = {"webpage", "blogPost", "forumPost"}
 
 
 @dataclass
@@ -47,6 +49,8 @@ class Extraction:
     table_source: str = ""
     replaces: str = ""
     pseudocode: str = ""
+    fields: object = None
+    citekey: str = ""
     published_version: object = None
     reference: object = None
     repairs: str = ""
@@ -182,6 +186,17 @@ def _localize_images(body, assets, link):
     def rewrite(match):
         nonlocal failed
         prefix, source = match.group(1), match.group(2)
+        embedded = re.fullmatch(r"data:image/([a-z0-9.+-]+);base64,(.+)", source, re.IGNORECASE | re.DOTALL)
+        if embedded:
+            try:
+                data = base64.b64decode(embedded.group(2), validate=True)
+            except ValueError:
+                failed += 1
+                return match.group(0)
+            name = f"{hashlib.sha256(data).hexdigest()[:16]}.{embedded.group(1).split('+')[0].lower()}"
+            assets.mkdir(parents=True, exist_ok=True)
+            (assets / name).write_bytes(data)
+            return f"{prefix}{link}/{name})"
         if source.startswith("images/"):
             return f"{prefix}{link}/{source[len('images/'):]})"
         if not source.startswith(("http://", "https://")):
@@ -325,9 +340,39 @@ def _render(extraction):
     return "\n".join(lines) + "\n\n" + extraction.body
 
 
-def _resolve_out(path, item, paper):
+def _from_web(item, url, config):
+    """Return an Extraction with its own front matter fields, preferring the snapshot the user saved."""
+    settings = config.get("zotero", {})
+    snapshot = None
+    if item:
+        snapshot = zotero.html_attachment(
+            settings.get("local_api_url", zotero.DEFAULT_URL), item.key, settings.get("data_dir", ""))
+    source = url or (item.url if item else "")
+    if snapshot and snapshot.path.is_file():
+        page, how = web.from_file(snapshot.path, source), "zotero snapshot"
+    elif source:
+        page, how = web.from_url(source), "url"
+    else:
+        raise NoRoute("the Zotero item has no snapshot and no URL")
+    title = (web.clean_title(item.title) if item else "") or page.title
+    authors = (item.authors if item else []) or ([page.author] if page.author else [])
+    date_value = (metadata.published(item) if item else "") or page.published
+    extraction = Extraction(title, _strip_title(page.markdown, title), source, f"defuddle ({how})", date_value)
+    extraction.fields = {
+        "zotero_key": item.key if item else "", "title": title, "authors": authors, "published": date_value,
+        "venue": page.site, "url": source,
+    }
+    key = item.citation_key if item else ""
+    extraction.citekey = key if metadata.good_citekey(key) else metadata.make_citekey(
+        authors[0] if authors else "", title, date_value, page.site)
+    return extraction
+
+
+def _resolve_out(path, item, paper, name=None, citekey=None):
     if path.suffix == ".md":
         return path
+    if name or citekey:
+        return path / f"{name or citekey}.md"
     if item:
         if not item.citation_key:
             raise LookupError(f"Zotero item {item.key} has no citekey; pass a full .md path to --out")
@@ -335,8 +380,12 @@ def _resolve_out(path, item, paper):
     return path / f"arxiv-{paper.arxiv_id.replace('/', '_')}.md"
 
 
-def _front_matter_fields(item, choice, extraction, venue_override):
+def _front_matter_fields(item, choice, extraction, venue_override, stem):
     paper = choice.paper if choice else None
+    if extraction.fields:
+        fields = {"citekey": stem, **extraction.fields}
+        fields["venue"] = venue_override or fields["venue"]
+        return fields
     if item:
         date_value = metadata.published(item) or extraction.published
         automatic = metadata.venue(item, date_value)
@@ -360,6 +409,8 @@ def main(argv=None):
     source.add_argument("--doi", help="DOI of a Zotero item")
     source.add_argument("--title", help="exact title of a Zotero item")
     source.add_argument("--arxiv", help="arXiv id, without using Zotero")
+    source.add_argument("--url", help="web page, without using Zotero")
+    parser.add_argument("--name", help="file name without extension, replacing the citekey")
     parser.add_argument("--out", required=True,
                         help="topic directory under raw/, named by citekey; or a full .md path")
     parser.add_argument("--venue", help="short venue such as 'aiDM 2020', when the automatic one is wrong")
@@ -373,15 +424,28 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     config = _load_config(args.config)
+    if "assets" in Path(args.out).parts and "raw" in Path(args.out).parts:
+        print("error: raw/assets holds images and is not a topic", file=sys.stderr)
+        return 2
     try:
-        item = choice = None
-        if args.arxiv:
+        item = choice = extraction = None
+        if args.url:
+            extraction = _from_web(None, args.url, config)
+            out = _resolve_out(Path(args.out), None, None, args.name, extraction.citekey)
+        elif args.arxiv:
             choice = Choice(arxiv.lookup(args.arxiv), "")
-            out = _resolve_out(Path(args.out), None, choice.paper)
+            out = _resolve_out(Path(args.out), None, choice.paper, args.name)
         else:
             url = config.get("zotero", {}).get("local_api_url", zotero.DEFAULT_URL)
             item = zotero.find(url, key=args.key, doi=args.doi, title=args.title)
-            out = _resolve_out(Path(args.out), item, None)
+            if item.item_type in WEB_TYPES:
+                extraction = _from_web(item, None, config)
+                out = _resolve_out(Path(args.out), item, None, args.name, extraction.citekey)
+            else:
+                out = _resolve_out(Path(args.out), item, None, args.name)
+    except (NoRoute, web.WebError) as e:
+        print(f"no route: {e}", file=sys.stderr)
+        return 3
     except (LookupError, OSError, urllib.error.URLError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
@@ -405,9 +469,10 @@ def main(argv=None):
         assets = final_assets
 
     try:
-        if item:
+        if item and extraction is None:
             choice = choose_arxiv(item, arxiv.lookup, arxiv.search)
-        extraction = _from_arxiv_html(choice) if choice else None
+        if extraction is None and choice:
+            extraction = _from_arxiv_html(choice)
         if extraction is None:
             extraction = _from_mineru(item, choice, config, args, assets)
     except NoRoute as e:
@@ -428,10 +493,11 @@ def main(argv=None):
     pages = _reference_pages(extraction.reference)
     if extraction.extractor.startswith("mineru"):
         _apply_repairs(extraction, pages)
-    _verify(extraction, pages, out.with_name(out.stem + ".check.json"))
+    if not extraction.fields:  # web pages have no PDF to compare with
+        _verify(extraction, pages, out.with_name(out.stem + ".check.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
     temporary = out.with_name(out.name + ".tmp")
-    fields = _front_matter_fields(item, choice, extraction, args.venue)
+    fields = _front_matter_fields(item, choice, extraction, args.venue, out.stem)
     temporary.write_text(metadata.front_matter(fields) + "\n" + _render(extraction), encoding="utf-8", newline="\n")
     os.replace(temporary, out)
     if assets != final_assets:
@@ -439,7 +505,8 @@ def main(argv=None):
         if assets.exists():
             os.replace(assets, final_assets)
     print(f"wrote {out}: {extraction.extractor}, {len(extraction.body)} chars, {extraction.errors} errors")
-    print(f"verification: {extraction.verification}")
+    if extraction.verification:
+        print(f"verification: {extraction.verification}")
     if extraction.repairs:
         print(f"repairs: {extraction.repairs}")
     if extraction.note:

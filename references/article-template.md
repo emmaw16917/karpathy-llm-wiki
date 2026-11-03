@@ -10,7 +10,7 @@
 
 ## {Body Sections}
 
-{Synthesize a coherent structure from the source material. Do not copy source text verbatim; distill and reorganize. Use blockquotes sparingly for particularly important original phrasing.}
+{Synthesize a coherent structure from the source material. Stay close to the source's wording without copying long passages. Use blockquotes sparingly for particularly important original phrasing.}
 
 {OPTIONAL status blocks — place directly beneath a claim that turns out to be outdated or disputed, so readers and lint can tell it no longer stands as written:}
 

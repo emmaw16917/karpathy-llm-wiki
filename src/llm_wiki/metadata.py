@@ -1,4 +1,5 @@
 """Bibliographic front matter for raw files."""
+import hashlib
 import json
 import re
 
@@ -13,6 +14,31 @@ JOURNALS = {
 APOSTROPHE = re.compile(r"^([A-Za-z][\w-]*)\s*['’]\s*(\d{2})\b")
 PARENTHESIZED = re.compile(r"\(([A-Z][A-Za-z0-9-]{1,14})\)")
 ISO_DATE = re.compile(r"^\d{4}(-\d{2}){0,2}$")
+
+
+STOP_WORDS = {"a", "an", "the", "of", "on", "in", "for", "and", "to", "with", "via", "by", "at", "from"}
+
+
+def good_citekey(key):
+    """Zotero's fallback keys have no year, or are only an item number."""
+    return bool(key) and not re.fullmatch(r"zotero-\d+", key) and re.search(r"\d{4}[a-z]?$", key) is not None
+
+
+def _site_label(site):
+    parts = [part for part in re.sub(r"[^a-z0-9.]", "", site.lower()).split(".") if part]
+    if len(parts) >= 2:
+        return parts[-2]
+    return parts[0] if parts else "web"
+
+
+def make_citekey(author, title, published_date, site):
+    """Build a key like Zotero's: surname, first title words, year."""
+    surname = re.sub(r"[^a-z0-9]", "", (author.split(",")[0].split() or [""])[-1].lower()) or _site_label(site)
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", title) if w.lower() not in STOP_WORDS]
+    body = "".join(w.capitalize() if w[0].isalpha() else w for w in words[:3])
+    if re.search(r"[^\x00-\x7f]", title):  # non-ASCII titles get a hash so similar titles stay distinct
+        body += hashlib.sha256(title.encode()).hexdigest()[:6]
+    return f"{surname}{body}{(published_date or '')[:4]}"
 
 
 def published(item):

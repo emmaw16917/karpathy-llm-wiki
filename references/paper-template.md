@@ -6,7 +6,7 @@ also: [{second domain, only if the paper truly solves that problem too}]
 # {Paper short name}: {Paper title}
 
 > Sources: {First author et al., YYYY-MM (venue)}
-> Raw: [{name}](../../raw/{topic}/{citekey}.md)
+> Raw: [{name}](../../raw/{topic}/{citekey}.md){; every other raw file whose facts are stated here}
 > Updated: {YYYY-MM-DD}
 
 {One sentence: the problem, the approach, and the key result with its condition.}
