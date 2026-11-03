@@ -1,7 +1,7 @@
 # {Title}
 
 > Sources: {Author1, YYYY-MM-DD; Author2, YYYY-MM-DD}
-> Raw: [{source1}](../../raw/{topic1}/{filename1}.md); [{source2}](../../raw/{topic2}/{filename2}.md)
+> Raw: [{source1}](../../raw/{topic1}/{citekey1}.md); [{source2}](../../raw/{topic2}/{citekey2}.md)
 > Updated: {YYYY-MM-DD — when the article's knowledge content last changed. Set to the creation date initially; refresh only on content changes, not typo or formatting fixes.}
 
 ## Overview
