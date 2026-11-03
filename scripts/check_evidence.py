@@ -93,6 +93,16 @@ def is_fence_closer(line: str, char: str, length: int) -> bool:
     return bool(m and m.group(1)[0] == char and len(m.group(1)) >= length)
 
 
+def strip_front_matter(lines: list[str]) -> list[str]:
+    """Drop leading YAML. Bibliographic metadata is not evidence, and letting
+    it match candidates would false-pass dates and years."""
+    if lines and lines[0].strip() == "---":
+        for i, line in enumerate(lines[1:], 1):
+            if line.strip() == "---":
+                return lines[i + 1:]
+    return lines
+
+
 def parse_document(text: str) -> Document:
     """Return the visible title, metadata header, and body.
 
@@ -108,7 +118,7 @@ def parse_document(text: str) -> Document:
     fence_char = None
     fence_len = 0
 
-    for line in text.splitlines():
+    for line in strip_front_matter(text.splitlines()):
         if fence_char:
             if is_fence_closer(line, fence_char, fence_len):
                 fence_char = None

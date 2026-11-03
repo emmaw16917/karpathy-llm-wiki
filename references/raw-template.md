@@ -6,10 +6,9 @@
 
 {Original content below. Preserve the source text faithfully. Clean up formatting noise (extra whitespace, broken HTML artifacts, navigation chrome), but do not rewrite opinions or alter meaning.}
 
-<!-- Files from llm-wiki-extract may also carry these header fields. The extractor writes them; do not add them by hand.
+<!-- Files from llm-wiki-extract start with YAML front matter (citekey, zotero_key, title, authors, published, venue, doi, arxiv), which replaces the Published line, and may carry these header fields. The extractor writes them; do not add them by hand.
 > Extractor: {route and tool}
-> Zotero: {item key}
-> DOI: {doi}
+> Pseudocode: {whether indentation was rebuilt}
 > Original: {Zotero attachment key and sha256 of the uploaded PDF}
 > Version-note: {why this text may differ from the published version}
 > Replaces: {sha256 of the replaced file, and the reason}

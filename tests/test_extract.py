@@ -175,8 +175,8 @@ class WriteRawTest(unittest.TestCase):
             out = Path(tmp) / "raw" / "t" / "p.md"
             self.assertEqual(self.run_main(out), 0)
             text = out.read_text(encoding="utf-8")
-            self.assertTrue(text.startswith("# My Paper\n\n> Source: https://arxiv.org/abs/2401.00001v2\n"))
-            for line in ("> Published: 2024", "> Extractor: arxiv-html", "> Zotero: ABC", "> DOI: 10.48550/arXiv.2401.00001"):
+            self.assertIn("---\n\n# My Paper\n\n> Source: https://arxiv.org/abs/2401.00001v2\n", text)
+            for line in ("published: 2024", "> Extractor: arxiv-html", 'zotero_key: "ABC"', 'doi: "10.48550/arXiv.2401.00001"'):
                 self.assertIn(line, text)
             self.assertEqual(self.run_main(out), 2)
             self.assertEqual(out.read_text(encoding="utf-8"), text)

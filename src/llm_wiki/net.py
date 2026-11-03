@@ -20,4 +20,7 @@ def urlopen(request, timeout):
         except urllib.error.URLError as e:
             if attempt == ATTEMPTS or not isinstance(e.reason, TRANSIENT):
                 raise
-            time.sleep(WAIT_SECONDS * attempt)
+        except ConnectionError:  # urllib does not wrap a drop while reading the response headers
+            if attempt == ATTEMPTS:
+                raise
+        time.sleep(WAIT_SECONDS * attempt)

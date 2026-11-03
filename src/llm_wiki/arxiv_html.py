@@ -11,6 +11,10 @@ from urllib.parse import urljoin
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 BLOCK = {"table", "figure", "div", "section", "article", "ul", "ol", "li", "p", "pre", "blockquote",
          "h1", "h2", "h3", "h4", "h5", "h6"}
+OPENER = re.compile(r"(for|foreach|while|if|loop|repeat|function|procedure)\b")
+CLOSER = re.compile(r"(end|endif|endfor|endwhile|endfunction|endprocedure|until)\b")
+MIDDLE = re.compile(r"(else|elif|elseif)\b")
+ONE_LINE = re.compile(r"\b(then|do)\s+\S")
 SKIP_TAGS = {"nav", "header", "footer", "script", "style", "button"}
 SKIP_CLASSES = {"ltx_TOC", "ltx_page_footer", "ltx_note_mark", "ltx_author_notes", "ltx_tag_item", "ltx_listing_data"}
 
@@ -23,6 +27,8 @@ class Result:
     tables: int
     equations: int
     image_tables: int = 0
+    indented_listings: int = 0
+    flat_listings: int = 0
 
 
 class Node:
@@ -83,6 +89,8 @@ class _Renderer:
         self.tables = 0
         self.equations = 0
         self.image_tables = 0
+        self.indented_listings = 0
+        self.flat_listings = 0
         self.out = []
 
     def inline(self, node):
@@ -164,8 +172,11 @@ class _Renderer:
         elif node.tag == "figure":
             self._figure(node)
         elif node.has_class("ltx_listing"):
-            lines = [self.text_of(n) for n in node.walk() if n.has_class("ltx_listingline")]
-            self.out.append("  \n".join(line for line in lines if line))
+            lines = [self.text_of(n).replace("**", "") for n in node.walk() if n.has_class("ltx_listingline")]
+            lines, state = indent_listing([line for line in lines if line])
+            self.indented_listings += state == "indented"
+            self.flat_listings += state == "flat"
+            self.out.append("```text\n" + "\n".join(lines) + "\n```")
         elif node.tag == "pre":
             self.out.append("```\n" + "".join(_raw_text(node)).strip("\n") + "\n```")
         elif node.tag in ("ul", "ol"):
@@ -253,6 +264,42 @@ class _Renderer:
         self.out.append(f"- {prefix}{text}")
 
 
+def indent_listing(lines):
+    """Rebuild pseudocode indentation from keywords; arXiv HTML does not keep it.
+
+    Return (lines, state): "indented", "flat" when the blocks do not balance,
+    or "none" when the listing has no blocks.
+    """
+    parsed = []
+    depth = 0
+    balanced = True
+    has_blocks = False
+    for line in lines:
+        match = re.match(r"(\d+:)\s*(.*)", line)
+        label, text = (match.group(1) + " ", match.group(2)) if match else ("", line)
+        lowered = text.lower()
+        if CLOSER.match(lowered):
+            has_blocks = True
+            depth -= 1
+            balanced = balanced and depth >= 0
+            shown = depth
+        elif MIDDLE.match(lowered):
+            shown = depth - 1
+            balanced = balanced and shown >= 0
+        else:
+            shown = depth
+            if OPENER.match(lowered) and not ONE_LINE.search(lowered):
+                has_blocks = True
+                depth += 1
+        parsed.append((label, text, max(shown, 0)))
+    balanced = balanced and depth == 0
+    if not has_blocks:
+        return lines, "none"
+    if not balanced:
+        return [label + text for label, text, _ in parsed], "flat"
+    return [label + "    " * shown + text for label, text, shown in parsed], "indented"
+
+
 def _raw_text(node):
     for child in node.children:
         if isinstance(child, str):
@@ -275,4 +322,4 @@ def convert(html, base_url):
     for child in article.nodes():
         renderer.block(child)
     return Result("\n\n".join(renderer.out) + "\n", title, renderer.errors, renderer.tables, renderer.equations,
-                  renderer.image_tables)
+                  renderer.image_tables, renderer.indented_listings, renderer.flat_listings)

@@ -1,3 +1,4 @@
+import http.client
 import socket
 import subprocess
 import sys
@@ -15,6 +16,13 @@ class RetryTest(unittest.TestCase):
     def test_retries_dns_failure_then_succeeds(self):
         dns = urllib.error.URLError(socket.gaierror(11001, "getaddrinfo failed"))
         with mock.patch.object(net.urllib.request, "urlopen", side_effect=[dns, "OK"]) as opened, \
+                mock.patch.object(net.time, "sleep"):
+            self.assertEqual(net.urlopen("https://x", timeout=1), "OK")
+        self.assertEqual(opened.call_count, 2)
+
+    def test_retries_unwrapped_remote_disconnect(self):
+        drop = http.client.RemoteDisconnected("closed")
+        with mock.patch.object(net.urllib.request, "urlopen", side_effect=[drop, "OK"]) as opened, \
                 mock.patch.object(net.time, "sleep"):
             self.assertEqual(net.urlopen("https://x", timeout=1), "OK")
         self.assertEqual(opened.call_count, 2)

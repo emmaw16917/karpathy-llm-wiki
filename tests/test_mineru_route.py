@@ -194,7 +194,7 @@ class RouteTest(unittest.TestCase):
         self.assertIn("> Source: https://doi.org/10.1/x", text)
         self.assertIn("> Extractor: mineru-vlm (upload)", text)
         self.assertIn("> Original: Zotero attachment ATT, sha256:", text)
-        self.assertTrue(text.startswith("# Zotero Title\n"))
+        self.assertIn("---\n\n# Zotero Title\n", text)
         self.assertIn("Body 1.5", text)
         self.assertEqual(text.count("# Zotero Title"), 1)
 

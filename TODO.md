@@ -6,6 +6,7 @@
 - [ ] Lost ligatures outside the PDF vocabulary: `repair_ligatures` only restores words the PDF text layer confirms. Ambiguous spellings and PDFs that use private-use glyphs (such as `hps` in ACM files) stay unrepaired.
 - [ ] Formula accuracy for the MinerU route: only papers with LaTeX source can be checked strictly; the text layer does not catch wrong subscripts.
 - [ ] Image tables whose PDF caption is not directly above the table stay unfilled and are reported in `Extraction-warnings`.
+- [ ] Pseudocode with omitted `end` lines stays flat in arXiv HTML (6 of 11 listings in AutoDAN). LaTeX source keeps the block structure; use it to rebuild these.
 - [ ] Review flagged pages visually: render pages that verification flags and check them against the Markdown.
 
 ## Routes

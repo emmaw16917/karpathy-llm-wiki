@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
 
-from . import arxiv, cleanup, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
+from . import arxiv, cleanup, metadata, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
@@ -46,6 +46,7 @@ class Extraction:
     remote_images: int = 0
     table_source: str = ""
     replaces: str = ""
+    pseudocode: str = ""
     reference: object = None
     repairs: str = ""
     verification: str = ""
@@ -104,11 +105,17 @@ def _from_arxiv_html(choice):
     except ValueError:
         print(f"route: arXiv has no HTML for {paper.arxiv_id}")
         return None
+    pseudocode = []
+    if result.indented_listings:
+        pseudocode.append(f"indentation inferred from keywords in {result.indented_listings} listings")
+    if result.flat_listings:
+        pseudocode.append(f"{result.flat_listings} listings left flat; their blocks did not balance")
     return Extraction(
         result.title or paper.title, result.markdown,
         f"https://arxiv.org/abs/{paper.arxiv_id}v{paper.version}",
         f"arxiv-html (arXiv LaTeXML, v{paper.version})",
         paper.published, choice.note, errors=result.errors, image_tables=result.image_tables,
+        pseudocode="; ".join(pseudocode),
         reference=f"https://arxiv.org/pdf/{paper.arxiv_id}v{paper.version}",
     )
 
@@ -274,18 +281,15 @@ def _verify(extraction, pages, check_path):
     check_path.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8", newline="\n")
 
 
-def _render(extraction, item):
+def _render(extraction):
     lines = [
         f"# {extraction.title}", "",
         f"> Source: {extraction.source}",
         f"> Collected: {date.today().isoformat()}",
-        f"> Published: {(item.date if item else '') or extraction.published or 'Unknown'}",
         f"> Extractor: {extraction.extractor}",
     ]
-    if item:
-        lines.append(f"> Zotero: {item.key}")
-        if item.doi:
-            lines.append(f"> DOI: {item.doi}")
+    if extraction.pseudocode:
+        lines.append(f"> Pseudocode: {extraction.pseudocode}")
     if extraction.original:
         lines.append(f"> Original: {extraction.original}")
     if extraction.note:
@@ -310,6 +314,32 @@ def _render(extraction, item):
     return "\n".join(lines) + "\n\n" + extraction.body
 
 
+def _resolve_out(path, item, paper):
+    if path.suffix == ".md":
+        return path
+    if item:
+        if not item.citation_key:
+            raise LookupError(f"Zotero item {item.key} has no citekey; pass a full .md path to --out")
+        return path / f"{item.citation_key}.md"
+    return path / f"arxiv-{paper.arxiv_id.replace('/', '_')}.md"
+
+
+def _front_matter_fields(item, choice, extraction, venue_override):
+    paper = choice.paper if choice else None
+    if item:
+        date_value = metadata.published(item) or extraction.published
+        automatic = metadata.venue(item, date_value)
+        return {
+            "citekey": item.citation_key, "zotero_key": item.key, "title": item.title,
+            "authors": item.authors, "published": date_value, "venue": venue_override or automatic,
+            "doi": item.doi, "arxiv": zotero.arxiv_id(item) or (paper.arxiv_id if paper else ""),
+        }
+    return {
+        "title": paper.title, "authors": paper.authors, "published": paper.published,
+        "venue": venue_override or f"arXiv {paper.published[:4]}", "arxiv": paper.arxiv_id,
+    }
+
+
 def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(errors="backslashreplace")
@@ -319,7 +349,9 @@ def main(argv=None):
     source.add_argument("--doi", help="DOI of a Zotero item")
     source.add_argument("--title", help="exact title of a Zotero item")
     source.add_argument("--arxiv", help="arXiv id, without using Zotero")
-    parser.add_argument("--out", required=True, help="output Markdown path under raw/")
+    parser.add_argument("--out", required=True,
+                        help="topic directory under raw/, named by citekey; or a full .md path")
+    parser.add_argument("--venue", help="short venue such as 'aiDM 2020', when the automatic one is wrong")
     parser.add_argument("--config", default="config.json")
     parser.add_argument("--pdf-url", help="public PDF of the same version; tried before other PDF routes")
     parser.add_argument("--allow-upload", action="store_true", help="upload a PDF that has no DOI or arXiv id")
@@ -329,7 +361,20 @@ def main(argv=None):
     parser.add_argument("--reason", help="why the raw file is being replaced; required with --replace")
     args = parser.parse_args(argv)
 
-    out = Path(args.out)
+    config = _load_config(args.config)
+    try:
+        item = choice = None
+        if args.arxiv:
+            choice = Choice(arxiv.lookup(args.arxiv), "")
+            out = _resolve_out(Path(args.out), None, choice.paper)
+        else:
+            url = config.get("zotero", {}).get("local_api_url", zotero.DEFAULT_URL)
+            item = zotero.find(url, key=args.key, doi=args.doi, title=args.title)
+            out = _resolve_out(Path(args.out), item, None)
+    except (LookupError, OSError, urllib.error.URLError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+
     final_assets = _asset_dir(out)
     replaces = ""
     if args.replace:
@@ -347,15 +392,9 @@ def main(argv=None):
             print(f"error: {final_assets} exists; choose another file name or remove it", file=sys.stderr)
             return 2
         assets = final_assets
-    config = _load_config(args.config)
 
     try:
-        item = None
-        if args.arxiv:
-            choice = Choice(arxiv.lookup(args.arxiv), "")
-        else:
-            url = config.get("zotero", {}).get("local_api_url", zotero.DEFAULT_URL)
-            item = zotero.find(url, key=args.key, doi=args.doi, title=args.title)
+        if item:
             choice = choose_arxiv(item, arxiv.lookup, arxiv.search)
         extraction = _from_arxiv_html(choice) if choice else None
         if extraction is None:
@@ -379,7 +418,8 @@ def main(argv=None):
     _verify(extraction, pages, out.with_name(out.stem + ".check.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
     temporary = out.with_name(out.name + ".tmp")
-    temporary.write_text(_render(extraction, item), encoding="utf-8", newline="\n")
+    fields = _front_matter_fields(item, choice, extraction, args.venue)
+    temporary.write_text(metadata.front_matter(fields) + "\n" + _render(extraction), encoding="utf-8", newline="\n")
     os.replace(temporary, out)
     if assets != final_assets:
         shutil.rmtree(final_assets, ignore_errors=True)

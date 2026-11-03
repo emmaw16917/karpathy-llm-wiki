@@ -3,7 +3,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 DEFAULT_URL = "http://localhost:23119/api/users/0"
@@ -22,6 +22,12 @@ class Item:
     extra: str
     date: str
     first_author: str
+    citation_key: str = ""
+    authors: list = field(default_factory=list)
+    parsed_date: str = ""
+    conference: str = ""
+    proceedings: str = ""
+    journal: str = ""
 
 
 @dataclass
@@ -34,6 +40,11 @@ def norm_title(title):
     return re.sub(r"[\W_]+", "", title).casefold()
 
 
+def _creator_name(creator):
+    full = f"{creator.get('firstName', '')} {creator.get('lastName', '')}".strip()
+    return full or creator.get("name", "")
+
+
 def _item(raw):
     d = raw["data"]
     creators = d.get("creators") or [{}]
@@ -41,6 +52,10 @@ def _item(raw):
         d["key"], d["itemType"], d.get("title", ""), d.get("DOI", ""), d.get("url", ""),
         d.get("archiveID", ""), d.get("extra", ""), d.get("date", ""),
         creators[0].get("lastName") or creators[0].get("name", ""),
+        d.get("citationKey", ""),
+        [_creator_name(c) for c in creators if c.get("creatorType") == "author"],
+        raw.get("meta", {}).get("parsedDate", ""),
+        d.get("conferenceName", ""), d.get("proceedingsTitle", ""), d.get("publicationTitle", ""),
     )
 
 

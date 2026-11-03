@@ -66,10 +66,12 @@ Fetch a source into raw/, then compile it into wiki/ — unless the source adds 
 Use the extractor for any paper in Zotero or on arXiv. It writes the raw file, its header, and its images, so do not write or edit them yourself:
 
 ```
-uv run --project <skill-dir> llm-wiki-extract --key <zotero-key> --out raw/<topic>/<file>.md --config <skill-dir>/config.json
+uv run --project <skill-dir> llm-wiki-extract --key <zotero-key> --out raw/<topic> --config <skill-dir>/config.json
 ```
 
 Instead of `--key`, you can pass `--doi`, `--title`, or `--arxiv <id>`. Zotero must be running with its local API enabled, unless you use `--arxiv`.
+
+The file is named `<citekey>.md`, which replaces the dated file name for papers. Its YAML front matter holds `citekey`, `zotero_key`, `title`, `authors`, `published` (the publication date), `venue`, `doi`, and `arxiv`. If `venue` is not a short name such as `ASE 2019`, pass `--venue "<name year>"`. Front matter is not evidence: `scripts/check_evidence.py` ignores it, so a fact stated only there cannot ground an article.
 
 The extractor tries these routes in order and records the one it used in the Extractor field:
 
@@ -93,6 +95,7 @@ After extracting, read these header fields before compiling:
 - **Extraction-warnings** — unresolved problems, such as tables that remain images. Do not state facts from a table whose data is not in the text.
 - **Version-note** — the text is a preprint. Say so in the article's Sources field when a load-bearing fact comes from it.
 - **Table-source** — these tables came from MinerU, while the rest of the text came from arXiv HTML.
+- **Pseudocode** — indentation was rebuilt from keywords, not read from the paper, so check the original before relying on block structure. Pseudocode sits in code blocks, which `scripts/check_evidence.py` skips, so a number quoted from it shows up as a suspect.
 
 Report flagged items to the user. Never correct numbers in raw/ by hand.
 
