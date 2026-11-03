@@ -141,7 +141,7 @@ class PipelineTest(unittest.TestCase):
         self.assertNotIn(header, body)
         self.assertIn("0.9721", body)  # numbers are reported, never rewritten
         self.assertIn("> Repairs: 1 ligature words, 1 URL schemes, 1 running lines", text)
-        self.assertIn("> Verification: pdf-text-layer; word coverage 100%; low-coverage pages: none; numbers not in PDF: 1", text)
+        self.assertIn("> Verification: pdf-text-layer; word coverage 100%; low-coverage pages: none; numbers not in PDF: 1; PDF numbers not in text: 3", text)
         check = json.loads(self.out.with_name("p.check.json").read_text(encoding="utf-8"))
         self.assertEqual(check["extra_numbers"], ["0.9721"])
         self.assertEqual(check["missing_numbers"], {"1": ["0.9712"], "2": ["0.9712"], "3": ["0.9712"]})

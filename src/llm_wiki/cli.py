@@ -5,18 +5,21 @@ uploaded to MinerU. Exit codes: 0 written, 2 error, 3 no usable route.
 """
 import argparse
 import hashlib
+import http.client
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from . import arxiv, cleanup, mineru, net, openalex, pdf_check, quality, verify, zotero
+from . import arxiv, cleanup, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
@@ -40,6 +43,8 @@ class Extraction:
     original: str = ""
     errors: int = 0
     image_tables: int = 0
+    remote_images: int = 0
+    table_source: str = ""
     reference: object = None
     repairs: str = ""
     verification: str = ""
@@ -107,13 +112,78 @@ def _from_arxiv_html(choice):
     )
 
 
-def _from_mineru(item, choice, config, args, assets):
+def _mineru_client(config):
     settings = config.get("mineru", {})
     token = (os.environ.get("MINERU_API_TOKEN") or settings.get("api_token") or "").strip()
     if not token:
+        return None
+    return mineru.Client(token, settings.get("base_url", mineru.DEFAULT_BASE), settings.get("language", "en"))
+
+
+def _fill_image_tables(extraction, config):
+    """Keep the HTML text, whose math is exact, and take only image tables from the PDF."""
+    client = _mineru_client(config)
+    if client is None:
+        return
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            pdf_body = client.parse_url(extraction.reference, Path(tmp) / "images")
+    except mineru.MineruError as e:
+        print(f"route: could not parse image tables: {e}")
+        return
+    extraction.body, filled = tables.merge_tables(extraction.body, pdf_body)
+    extraction.image_tables -= filled
+    if filled:
+        extraction.table_source = f"{filled} tables from mineru-{mineru.MODEL} on {extraction.reference}"
+
+
+def _asset_dir(out):
+    """Return raw/assets/<stem>, or assets/<stem> beside a file outside raw/."""
+    root = next((parent for parent in out.parents if parent.name == "raw"), out.parent)
+    return root / "assets" / out.stem
+
+
+def _asset_link(out, assets):
+    return os.path.relpath(assets, out.parent).replace("\\", "/")
+
+
+def _save_image(url, path):
+    request = urllib.request.Request(url, headers={"User-Agent": arxiv.USER_AGENT})
+    try:
+        with net.urlopen(request, timeout=120) as resp:
+            data = resp.read()
+    except (OSError, http.client.HTTPException):
+        return False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return True
+
+
+def _localize_images(body, assets, link):
+    """Point image links at local files. Return (body, images that stayed remote)."""
+    failed = 0
+
+    def rewrite(match):
+        nonlocal failed
+        prefix, source = match.group(1), match.group(2)
+        if source.startswith("images/"):
+            return f"{prefix}{link}/{source[len('images/'):]})"
+        if not source.startswith(("http://", "https://")):
+            return match.group(0)
+        name = PurePosixPath(urllib.parse.urlsplit(source).path).name
+        if not _save_image(source, assets / name):
+            failed += 1
+            return match.group(0)
+        return f"{prefix}{link}/{name})"
+
+    return re.sub(r"(!\[.*?\]\()([^)\s]+)\)", rewrite, body), failed
+
+
+def _from_mineru(item, choice, config, args, assets):
+    client = _mineru_client(config)
+    if client is None:
         raise NoRoute("MinerU token is not configured")
-    client = mineru.Client(token, settings.get("base_url", mineru.DEFAULT_BASE), settings.get("language", "en"))
-    extractor = f"mineru-{mineru.MODEL}"
+    extractor =f"mineru-{mineru.MODEL}"
     title = item.title if item else choice.paper.title
     published = (item.date if item else "") or (choice.paper.published if choice else "")
 
@@ -196,7 +266,8 @@ def _verify(extraction, pages, check_path):
     low = ", ".join(map(str, report.low_pages)) or "none"
     extraction.verification = (
         f"pdf-text-layer; word coverage {report.coverage:.0%}; low-coverage pages: {low}; "
-        f"numbers not in PDF: {len(report.extra_numbers)}"
+        f"numbers not in PDF: {len(report.extra_numbers)}; "
+        f"PDF numbers not in text: {sum(map(len, report.missing_numbers.values()))}"
     )
     check_path.parent.mkdir(parents=True, exist_ok=True)
     check_path.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8", newline="\n")
@@ -218,6 +289,8 @@ def _render(extraction, item):
         lines.append(f"> Original: {extraction.original}")
     if extraction.note:
         lines.append(f"> Version-note: {extraction.note}")
+    if extraction.table_source:
+        lines.append(f"> Table-source: {extraction.table_source}")
     if extraction.repairs:
         lines.append(f"> Repairs: {extraction.repairs}")
     if extraction.verification:
@@ -227,6 +300,8 @@ def _render(extraction, item):
         warnings.append(f"{extraction.errors} conversion errors; review before compiling")
     if extraction.image_tables:
         warnings.append(f"{extraction.image_tables} tables are images; their data is not in this text")
+    if extraction.remote_images:
+        warnings.append(f"{extraction.remote_images} images could not be saved locally")
     if warnings:
         lines.append("> Extraction-warnings: " + "; ".join(warnings))
     return "\n".join(lines) + "\n\n" + extraction.body
@@ -253,7 +328,10 @@ def main(argv=None):
         print(f"error: {out} exists; raw files are not overwritten", file=sys.stderr)
         return 2
     config = _load_config(args.config)
-    assets = out.with_name(out.stem + ".assets")
+    assets = _asset_dir(out)
+    if assets.exists():
+        print(f"error: {assets} exists; choose another file name or remove it", file=sys.stderr)
+        return 2
 
     try:
         item = None
@@ -275,6 +353,9 @@ def main(argv=None):
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    if extraction.image_tables:
+        _fill_image_tables(extraction, config)
+    extraction.body, extraction.remote_images = _localize_images(extraction.body, assets, _asset_link(out, assets))
     pages = _reference_pages(extraction.reference)
     if extraction.extractor.startswith("mineru"):
         _apply_repairs(extraction, pages)

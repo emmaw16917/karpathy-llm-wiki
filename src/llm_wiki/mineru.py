@@ -2,7 +2,6 @@
 import http.client
 import io
 import json
-import re
 import time
 import urllib.error
 import urllib.parse
@@ -53,7 +52,7 @@ def unpack(data, assets):
             if len(pure.parts) == 2 and pure.parts[0] == "images" and ".." not in pure.parts:
                 assets.mkdir(parents=True, exist_ok=True)
                 (assets / pure.name).write_bytes(archive.read(name))
-    return re.sub(r"\]\(images/([^)\s/]+)\)", lambda m: f"]({assets.name}/{m.group(1)})", markdown)
+    return markdown
 
 
 class Client:

@@ -5,7 +5,7 @@
 - [ ] Reading order: MinerU can place text in the wrong spot. Example: a third author appears after `## 1 INTRODUCTION` in Learned Index. The text layer cannot detect this, because the words are all present.
 - [ ] Lost ligatures outside the PDF vocabulary: `repair_ligatures` only restores words the PDF text layer confirms. Ambiguous spellings and PDFs that use private-use glyphs (such as `hps` in ACM files) stay unrepaired.
 - [ ] Formula accuracy for the MinerU route: only papers with LaTeX source can be checked strictly; the text layer does not catch wrong subscripts.
-- [ ] Tables stored as images: arXiv HTML can hold a table as SVG (Logzip Tables I and II). Decide whether to read the SVG text or route these papers to MinerU or LaTeX.
+- [ ] Image tables whose PDF caption is not directly above the table stay unfilled and are reported in `Extraction-warnings`.
 - [ ] Review flagged pages visually: render pages that verification flags and check them against the Markdown.
 
 ## Routes

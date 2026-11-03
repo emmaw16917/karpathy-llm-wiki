@@ -23,7 +23,7 @@ def make_zip(entries):
 
 
 class UnpackTest(unittest.TestCase):
-    def test_rewrites_image_links_and_blocks_traversal(self):
+    def test_saves_images_and_blocks_traversal(self):
         data = make_zip({
             "full.md": "# T\n\n![](images/a.jpg)\n\nA1 ![x](images/b.jpg)\n",
             "images/a.jpg": b"A",
@@ -34,8 +34,8 @@ class UnpackTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             assets = Path(tmp) / "out" / "p.assets"
             md = mineru.unpack(data, assets)
-            self.assertIn("![](p.assets/a.jpg)", md)
-            self.assertIn("![x](p.assets/b.jpg)", md)
+            self.assertIn("![](images/a.jpg)", md)
+            self.assertIn("![x](images/b.jpg)", md)
             self.assertEqual(sorted(p.name for p in assets.iterdir()), ["a.jpg", "b.jpg"])
             self.assertFalse((Path(tmp) / "evil.txt").exists())
             self.assertFalse((Path(tmp) / "out" / "evil.txt").exists())

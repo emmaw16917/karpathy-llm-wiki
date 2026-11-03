@@ -164,6 +164,7 @@ class WriteRawTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "MINERU_API_TOKEN"}
         with mock.patch.dict(os.environ, env, clear=True), \
                 mock.patch.object(cli, "_reference_pages", return_value=None), \
+                mock.patch.object(cli, "_save_image", return_value=False), \
                 mock.patch.object(cli.zotero, "find", return_value=it), \
                 mock.patch.object(cli.arxiv, "lookup", return_value=paper), \
                 mock.patch.object(cli.arxiv, "fetch_html", return_value=(html, "https://arxiv.org/html/2401.00001v2/")):
