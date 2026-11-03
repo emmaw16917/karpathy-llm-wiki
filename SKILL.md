@@ -23,7 +23,7 @@ Three layers, all under the user's project root:
 
 **SKILL.md** (this file) — Schema layer. Defines structure and workflow rules.
 
-Templates live in `references/` relative to this file. Read them when you need the exact format for raw files, source articles, overviews, concept pages, archive pages, or the index.
+Templates live in `references/` relative to this file. Read them when you need the exact format for raw files, source articles, overviews, concept pages, archive pages, the index, or conflict annotations.
 
 ### Initialization
 
@@ -131,7 +131,7 @@ New, Update, and Disputed may be combined. No material is exclusive.
 
 ### Compile (wiki/)
 
-Every source gets one article at `wiki/<topic>/<citekey>.md`. Sources are never merged into one another; shared knowledge goes in the overview and concept pages (see Papers and topics). In all cases, check for factual conflicts: if the new source contradicts existing content, mark the contested claims with a **Status: Disputed** block (see `references/article-template.md`). When the conflicting content lives in separate articles, mark both and cross-link them.
+Every source gets one article at `wiki/<topic>/<citekey>.md`. Sources are never merged into one another; shared knowledge goes in the overview and concept pages (see Papers and topics). In all cases, check for factual conflicts: if the new source contradicts existing content, mark the contested claims with a **Status: Disputed** block (see `references/status-blocks.md`). When the conflicting content lives in separate articles, mark both and cross-link them.
 
 **Source fidelity.** Every number, date, and direct quote must be located in the raw file (grep or read) *before* it is written; write the value exactly as found — if the source says 42K, write 42K, not 42,000. Derived values (sums, deltas, counts you computed) must show their components so each component is findable in raw. If you cannot locate a value, do not write its exact form; drop it or state it without precision.
 
@@ -157,7 +157,7 @@ Overviews compare methods and evaluation design only. Do not put experimental re
 
 **Concept pages.** A technique that recurs across articles, such as an encoding, can get a page at `wiki/<topic>/concept-<name>.md`, under the problem domain that uses it most. Follow `references/concept-template.md`. Overviews compare methods; concept pages explain one technique. Create one only when the user asks, or approves a Lint suggestion.
 
-Format reference for all article types (`references/article-template.md` defines Status blocks). Key points:
+Source, overview, and concept articles share the same header fields. Key points:
 - Sources field: author, organization, or publication name + date, semicolon-separated.
 - Raw field: markdown links to raw/ files, semicolon-separated.
 - Relative paths from `wiki/<topic>/` use `../../raw/<topic>/<file>.md` (two levels up to project root).
@@ -166,7 +166,7 @@ Format reference for all article types (`references/article-template.md` defines
 
 After the primary article, check for ripple effects. Do not rely on the index alone: search the full wiki for the source's key entities, aliases, and the claims it touches, then update every non-archive article whose content is materially affected. Each updated file gets its Updated date refreshed.
 
-When the new source supersedes or contradicts an existing claim, keep the old claim for the record but mark it with a Status block (see `references/article-template.md`): **Outdated** when something newer replaces it, **Disputed** when sources disagree. Never silently rewrite history.
+When the new source supersedes or contradicts an existing claim, keep the old claim for the record but mark it with a Status block (see `references/status-blocks.md`): **Outdated** when something newer replaces it, **Disputed** when sources disagree. Never silently rewrite history.
 
 Archive pages are never cascade-updated (they are point-in-time snapshots).
 
@@ -281,7 +281,7 @@ These rely on your judgment. Report findings without auto-fixing:
 - Outdated claims superseded by newer sources but still presented without a Status block
 - Missing conflict annotations where sources disagree
 - Obviously missing cross-references between related articles (suggest them; do not add silently)
-- Malformed Status blocks (Outdated missing its date, or either block missing its explanation; format reference: `references/article-template.md`)
+- Malformed Status blocks (Outdated missing its date, or either block missing its explanation; format reference: `references/status-blocks.md`)
 - Orphan pages with no inbound links from other wiki articles
 - Missing cross-topic references
 - Concepts mentioned in three or more source articles without a concept page (suggest them; create one only if the user approves)
