@@ -1,4 +1,5 @@
 """arXiv metadata lookup and HTML download."""
+import http.client
 import re
 import urllib.error
 import urllib.parse
@@ -56,6 +57,15 @@ def search(title):
     query = urllib.parse.quote('ti:"' + " ".join(words) + '"')
     with _get(f"{API}?search_query={query}&max_results=5") as resp:
         return _parse_feed(resp.read())
+
+
+def fetch_source(paper):
+    """Return the LaTeX source package, or None if it cannot be downloaded."""
+    try:
+        with _get(f"https://arxiv.org/e-print/{paper.arxiv_id}v{paper.version}") as resp:
+            return resp.read()
+    except (OSError, http.client.HTTPException):
+        return None
 
 
 def fetch_html(paper):

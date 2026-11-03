@@ -155,6 +155,7 @@ class FileNamingTest(unittest.TestCase):
 
     def run_cli(self, *args, found=None):
         with mock.patch.object(cli, "_reference_pages", return_value=None), \
+                mock.patch.object(cli.openalex, "find_published_version", return_value=None), \
                 mock.patch.object(cli.zotero, "find", return_value=found), \
                 mock.patch.object(cli.arxiv, "lookup", return_value=self.paper), \
                 mock.patch.object(cli.arxiv, "fetch_html", return_value=(self.page, "https://x/")):

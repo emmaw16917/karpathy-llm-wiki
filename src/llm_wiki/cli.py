@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path, PurePosixPath
 
-from . import arxiv, cleanup, metadata, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
+from . import arxiv, cleanup, latex_source, metadata, mineru, net, openalex, pdf_check, quality, tables, verify, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
@@ -47,6 +47,7 @@ class Extraction:
     table_source: str = ""
     replaces: str = ""
     pseudocode: str = ""
+    published_version: object = None
     reference: object = None
     repairs: str = ""
     verification: str = ""
@@ -100,12 +101,19 @@ def _is_doubled(body):
 def _from_arxiv_html(choice):
     paper = choice.paper
     html, base = arxiv.fetch_html(paper)
+    blocks = []
+    if "ltx_listing" in html:
+        source = arxiv.fetch_source(paper)
+        if source:
+            blocks = latex_source.algorithm_blocks(latex_source.read_tex_files(source))
     try:
-        result = convert(html, base)
+        result = convert(html, base, blocks)
     except ValueError:
         print(f"route: arXiv has no HTML for {paper.arxiv_id}")
         return None
     pseudocode = []
+    if result.source_listings:
+        pseudocode.append(f"indentation from LaTeX source in {result.source_listings} listings")
     if result.indented_listings:
         pseudocode.append(f"indentation inferred from keywords in {result.indented_listings} listings")
     if result.flat_listings:
@@ -294,6 +302,9 @@ def _render(extraction):
         lines.append(f"> Original: {extraction.original}")
     if extraction.note:
         lines.append(f"> Version-note: {extraction.note}")
+    if extraction.published_version:
+        doi, venue = extraction.published_version
+        lines.append(f"> Published-version: https://doi.org/{doi} ({venue}, per OpenAlex)")
     if extraction.replaces:
         lines.append(f"> Replaces: {extraction.replaces}")
     if extraction.table_source:
@@ -411,6 +422,8 @@ def main(argv=None):
     if extraction.image_tables:
         _fill_image_tables(extraction, config)
     extraction.replaces = replaces
+    if choice and not choice.note:
+        extraction.published_version = openalex.find_published_version(choice.paper.arxiv_id)
     extraction.body, extraction.remote_images = _localize_images(extraction.body, assets, _asset_link(out, final_assets))
     pages = _reference_pages(extraction.reference)
     if extraction.extractor.startswith("mineru"):
@@ -431,6 +444,9 @@ def main(argv=None):
         print(f"repairs: {extraction.repairs}")
     if extraction.note:
         print(f"note: {extraction.note}")
+    if extraction.published_version:
+        doi, venue = extraction.published_version
+        print(f"note: a published version may exist: https://doi.org/{doi} ({venue}); text kept from arXiv")
     return 0
 
 

@@ -95,7 +95,8 @@ After extracting, read these header fields before compiling:
 - **Extraction-warnings** — unresolved problems, such as tables that remain images. Do not state facts from a table whose data is not in the text.
 - **Version-note** — the text is a preprint. Say so in the article's Sources field when a load-bearing fact comes from it.
 - **Table-source** — these tables came from MinerU, while the rest of the text came from arXiv HTML.
-- **Pseudocode** — indentation was rebuilt from keywords, not read from the paper, so check the original before relying on block structure. Pseudocode sits in code blocks, which `scripts/check_evidence.py` skips, so a number quoted from it shows up as a suspect.
+- **Published-version** — OpenAlex links this preprint to a published version. The text stays from arXiv, because its HTML and LaTeX extract better and the published PDF may need access rights. Tell the user, who may want to update the Zotero item. Its absence does not prove that no published version exists.
+- **Pseudocode** — indentation comes from the LaTeX source or, when no source block aligns, is rebuilt from keywords. Check the original before relying on keyword-based block structure. Pseudocode sits in code blocks, which `scripts/check_evidence.py` skips, so a number quoted from it shows up as a suspect.
 
 Report flagged items to the user. Never correct numbers in raw/ by hand.
 

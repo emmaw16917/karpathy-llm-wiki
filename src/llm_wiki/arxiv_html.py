@@ -29,6 +29,7 @@ class Result:
     image_tables: int = 0
     indented_listings: int = 0
     flat_listings: int = 0
+    source_listings: int = 0
 
 
 class Node:
@@ -83,8 +84,11 @@ def _skipped(node):
 
 
 class _Renderer:
-    def __init__(self, base_url):
+    def __init__(self, base_url, blocks=()):
         self.base_url = base_url
+        self.blocks = list(blocks)
+        self.next_block = 0
+        self.source_listings = 0
         self.errors = 0
         self.tables = 0
         self.equations = 0
@@ -173,7 +177,13 @@ class _Renderer:
             self._figure(node)
         elif node.has_class("ltx_listing"):
             lines = [self.text_of(n).replace("**", "") for n in node.walk() if n.has_class("ltx_listingline")]
-            lines, state = indent_listing([line for line in lines if line])
+            lines = [line for line in lines if line]
+            from_source = self._indent_from_source(lines)
+            if from_source is not None:
+                self.source_listings += 1
+                self.out.append("```text\n" + "\n".join(from_source) + "\n```")
+                return
+            lines, state = indent_listing(lines)
             self.indented_listings += state == "indented"
             self.flat_listings += state == "flat"
             self.out.append("```text\n" + "\n".join(lines) + "\n```")
@@ -184,6 +194,15 @@ class _Renderer:
                 self._list_item(child)
         else:
             self._mixed(node)
+
+    def _indent_from_source(self, lines):
+        """Use the next source block that fits; blocks before it had no HTML listing."""
+        for index in range(self.next_block, len(self.blocks)):
+            result = indent_from_tokens(lines, self.blocks[index])
+            if result is not None:
+                self.next_block = index + 1
+                return result
+        return None
 
     def _mixed(self, node):
         if not any(n.tag in BLOCK for n in node.walk()) and node.tag in BLOCK | {"root"}:
@@ -264,6 +283,58 @@ class _Renderer:
         self.out.append(f"- {prefix}{text}")
 
 
+def indent_from_tokens(lines, tokens):
+    """Indent lines using LaTeX block commands. Return None unless every line aligns.
+
+    Papers may hide End commands, so a closer consumes an HTML line only when
+    that line starts with "end" or "until".
+    """
+    result = []
+    depth = 0
+    position = 0
+    for line in lines:
+        match = re.match(r"(\d+:)\s*(.*)", line)
+        label, text = (match.group(1) + " ", match.group(2)) if match else ("", line)
+        closer = CLOSER.match(text.lower())
+        wanted = _closed_block(text.lower()) if closer else None
+        while position < len(tokens) and _hidden_closer(tokens[position], closer, wanted):
+            depth -= 1
+            position += 1
+        if position == len(tokens) or depth < 0 or bool(closer) != tokens[position].startswith("close"):
+            return None
+        kind = tokens[position]
+        position += 1
+        if kind.startswith("close"):
+            depth -= 1
+        shown = depth - 1 if kind == "middle" else depth
+        if shown < 0:
+            return None
+        result.append(label + "    " * shown + text)
+        if kind == "open":
+            depth += 1
+    if any(not kind.startswith("close") for kind in tokens[position:]):
+        return None
+    return result
+
+
+def _closed_block(lowered):
+    """Return the block a printed closer names: "end while" and "endwhile" give "while"."""
+    if lowered.startswith("until"):
+        return "until"
+    match = re.match(r"end\s*([a-z]+)", lowered)
+    return match.group(1) if match else ""
+
+
+def _hidden_closer(token, closer, wanted):
+    """Tell whether a close command prints nothing here, as under algpseudocode's noend."""
+    if not token.startswith("close"):
+        return False
+    if not closer:
+        return True
+    name = token.partition(":")[2]
+    return bool(wanted and name and name != wanted)
+
+
 def indent_listing(lines):
     """Rebuild pseudocode indentation from keywords; arXiv HTML does not keep it.
 
@@ -308,7 +379,7 @@ def _raw_text(node):
             yield from _raw_text(child)
 
 
-def convert(html, base_url):
+def convert(html, base_url, algorithm_blocks=()):
     """Return a Result, or raise ValueError if html is not a LaTeXML document."""
     parser = _Parser()
     parser.feed(html)
@@ -316,10 +387,11 @@ def convert(html, base_url):
     article = parser.root.find(lambda n: n.tag == "article" and n.has_class("ltx_document"))
     if article is None:
         raise ValueError("no LaTeXML document in page")
-    renderer = _Renderer(base_url)
+    renderer = _Renderer(base_url, algorithm_blocks)
     title_node = article.find(lambda n: n.has_class("ltx_title_document"))
     title = renderer.text_of(title_node) if title_node else ""
     for child in article.nodes():
         renderer.block(child)
     return Result("\n\n".join(renderer.out) + "\n", title, renderer.errors, renderer.tables, renderer.equations,
-                  renderer.image_tables, renderer.indented_listings, renderer.flat_listings)
+                  renderer.image_tables, renderer.indented_listings, renderer.flat_listings,
+                  renderer.source_listings)
