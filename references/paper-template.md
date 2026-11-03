@@ -9,19 +9,30 @@ also: [{second domain, only if the paper truly solves that problem too}]
 > Raw: [{name}](../../raw/{topic}/{citekey}.md){; every other raw file whose facts are stated here}
 > Updated: {YYYY-MM-DD}
 
-{One sentence: the problem, the approach, and the key result with its condition.}
+{Two or three sentences: the problem, the approach, and the headline result with its dataset, baseline, and condition. This is the article's mini-abstract; keep it self-contained.}
+
+> **Key insight:** {The observation or mechanism that makes the approach work, in one or two sentences and in your own words. The summary says what was done and what happened; the insight says why it can work. If the paper states no explicit insight, give the implicit rationale and mark it as your reading.}
 
 ## Problem and Challenges
 
-{The specific scientific problem and assumptions. Only background particular to this paper; shared background belongs in the overview. List each technical challenge the paper claims to solve, and why it says prior work falls short.}
+{One sentence on why this problem matters. Only background particular to this paper; shared background belongs in the overview.}
+
+**Prior work and the gap.** {The mainstream approach and where it falls short. The gap can take several forms: an assumption that breaks, a case the prior work never studied, an incomplete solution, a missing evaluation, or a capability that only recently became available. State which form this paper claims, and attribute the claim to the paper.}
+
+**Challenges.** {The technical challenges that follow from that gap, and which of them the paper addresses.}
 
 ## Contributions and Method
 
-{One subsection per contribution: what it is, how it works, which challenge it addresses. Keep algorithm details here. These are the paper's own claims of novelty.}
+{One subsection per contribution. Follow one chain: challenge → obstacle → design choice → what it is and how it works. Keep algorithm details here. These are the paper's own claims of novelty.}
+
+{Optional, only when equations carry the contribution — otherwise delete this subsection:}
+### Formal core
+
+{The objective, estimator, or theorem; its assumptions; and what it buys. Explain why each part exists, not what each symbol denotes.}
 
 ## Evaluation
 
-{Headline numbers first, each with its dataset and baseline.}
+{Headline numbers first, each with its dataset and baseline. Map each claim to the experiment that tests it; do not just list results.}
 
 - **Environment:** {hardware, threads, language}
 - **Datasets:** {which, how many, total size}
@@ -33,7 +44,7 @@ also: [{second domain, only if the paper truly solves that problem too}]
 
 ## Limitations and Open Doubts
 
-{Our analysis, not the authors': weak spots, internal inconsistencies, unfair comparisons. Mark conflicts with other sources with a Status: Disputed block.}
+{Our analysis, not the authors': weak spots, internal inconsistencies, unfair comparisons, alternative explanations the experiments do not rule out, and material evidence the claims would need but the paper does not provide. If a missing experiment would change the conclusion, name it explicitly. Mark conflicts with other sources with a Status: Disputed block.}
 
 ## See Also
 
