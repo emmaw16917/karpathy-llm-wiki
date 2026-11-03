@@ -356,7 +356,11 @@ def unreferenced_raws(root: Path) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    root = Path(argv[1]).resolve() if len(argv) > 1 else Path.cwd()
+    # Legacy consoles (GBK on Chinese Windows) cannot encode every character.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(errors="backslashreplace")
+
+    root =Path(argv[1]).resolve() if len(argv) > 1 else Path.cwd()
     wiki_dir = root / "wiki"
     if not wiki_dir.is_dir():
         print(f"no wiki/ directory under {root}")

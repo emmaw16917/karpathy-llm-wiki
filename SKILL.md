@@ -192,7 +192,7 @@ Fix these automatically:
 
 ### Mechanical Reports (no fixes)
 
-Run these mechanically with `python3 <skill-dir>/scripts/check_evidence.py <project-root>` (optionally followed by project-root-relative article paths to limit scope). Default scope is the whole wiki; the script is fast. Report findings; never auto-fix facts.
+Run these mechanically with `python3 <skill-dir>/scripts/check_evidence.py <project-root>` (on Windows, use `python` or `py -3`; requires Python 3.10+; optionally followed by project-root-relative article paths to limit scope). Default scope is the whole wiki; the script is fast. Report findings; never auto-fix facts.
 
 **Source fidelity** — reported suspects are candidates, not verdicts: derived values and product names may appear. Judge each against the raw context and report only real mismatches.
 
