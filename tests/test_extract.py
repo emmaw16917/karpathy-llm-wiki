@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -148,7 +149,9 @@ class WriteRawTest(unittest.TestCase):
     def run_main(self, out, html=PAGE):
         it = item(key="ABC", doi="10.48550/arXiv.2401.00001", title="Zotero Title")
         paper = arxiv.Paper("2401.00001", 2, "Great", ["Ada Liu"], "2024-01-01")
-        with mock.patch.object(cli.zotero, "find", return_value=it), \
+        env = {k: v for k, v in os.environ.items() if k != "MINERU_API_TOKEN"}
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(cli.zotero, "find", return_value=it), \
                 mock.patch.object(cli.arxiv, "lookup", return_value=paper), \
                 mock.patch.object(cli.arxiv, "fetch_html", return_value=(html, "https://arxiv.org/html/2401.00001v2/")):
             return cli.main(["--key", "ABC", "--out", str(out), "--config", str(out) + ".none"])

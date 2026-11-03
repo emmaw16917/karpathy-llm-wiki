@@ -1,27 +1,46 @@
 """Extract a paper into a raw/ Markdown file.
 
-Implemented route: arXiv HTML. Exit codes: 0 written, 2 error,
-3 no implemented route could produce the paper.
+Route order: arXiv HTML, public PDF through MinerU, then the Zotero PDF
+uploaded to MinerU. Exit codes: 0 written, 2 error, 3 no usable route.
 """
 import argparse
+import hashlib
 import json
+import os
+import shutil
 import sys
 import urllib.error
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
-from . import arxiv, zotero
+from . import arxiv, mineru, openalex, pdf_check, quality, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
-NEXT_ROUTES = "Not implemented yet: arXiv LaTeX, publisher HTML, MinerU."
+ARXIV_DOI_PREFIX = "10.48550/arxiv."
 
 
 @dataclass
 class Choice:
     paper: arxiv.Paper
     note: str
+
+
+@dataclass
+class Extraction:
+    title: str
+    body: str
+    source: str
+    extractor: str
+    published: str = ""
+    note: str = ""
+    original: str = ""
+    errors: int = 0
+
+
+class NoRoute(Exception):
+    pass
 
 
 def choose_arxiv(item, lookup, search):
@@ -39,31 +58,119 @@ def choose_arxiv(item, lookup, search):
     return None
 
 
-def _zotero_url(config_path):
+def _load_config(path):
     try:
-        config = json.loads(Path(config_path).read_text(encoding="utf-8"))
-        return config["zotero"]["local_api_url"]
-    except (OSError, KeyError, ValueError):
-        return zotero.DEFAULT_URL
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
 
 
-def _render(result, item, paper, note):
+def _strip_title(markdown, title):
+    """Drop the paper's own title heading; the raw header already carries it."""
+    wanted = zotero.norm_title(title)
+    lines = markdown.strip().splitlines()
+    for i, line in enumerate(lines[:40]):
+        if line.startswith("# ") and zotero.norm_title(line) == wanted:
+            del lines[i]
+            break
+    return "\n".join(lines).strip() + "\n"
+
+
+def _is_doubled(body):
+    ratio = quality.doubled_ratio(body)
+    if ratio > quality.DOUBLED_LIMIT:
+        print(f"route: rejected extraction, {ratio:.0%} of its text is repeated (bad PDF text layer)")
+        return True
+    return False
+
+
+def _from_arxiv_html(choice):
+    paper = choice.paper
+    html, base = arxiv.fetch_html(paper)
+    try:
+        result = convert(html, base)
+    except ValueError:
+        print(f"route: arXiv has no HTML for {paper.arxiv_id}")
+        return None
+    return Extraction(
+        result.title or paper.title, result.markdown,
+        f"https://arxiv.org/abs/{paper.arxiv_id}v{paper.version}",
+        f"arxiv-html (arXiv LaTeXML, v{paper.version})",
+        paper.published, choice.note, errors=result.errors,
+    )
+
+
+def _from_mineru(item, choice, config, args, assets):
+    settings = config.get("mineru", {})
+    token = (os.environ.get("MINERU_API_TOKEN") or settings.get("api_token") or "").strip()
+    if not token:
+        raise NoRoute("MinerU token is not configured")
+    client = mineru.Client(token, settings.get("base_url", mineru.DEFAULT_BASE), settings.get("language", "en"))
+    extractor = f"mineru-{mineru.MODEL}"
+    title = item.title if item else choice.paper.title
+    published = (item.date if item else "") or (choice.paper.published if choice else "")
+
+    urls = [(args.pdf_url, "")] if args.pdf_url else []
+    if choice and not choice.note:
+        urls.append((f"https://arxiv.org/pdf/{choice.paper.arxiv_id}v{choice.paper.version}", ""))
+    doi = item.doi if item else ""
+    if doi and not doi.casefold().startswith(ARXIV_DOI_PREFIX):
+        public = openalex.find_published_pdf(doi)
+        if public:
+            urls.append((public, ""))
+    for url, note in urls:
+        try:
+            body = client.parse_url(url, assets)
+        except mineru.MineruError as e:
+            print(f"route: MinerU could not read the public PDF: {e}")
+            continue
+        if _is_doubled(body):
+            continue
+        return Extraction(title, _strip_title(body, title), url, f"{extractor} (url)", published, note)
+
+    if not item:
+        raise NoRoute("no public PDF was readable and no Zotero item was given")
+    if not (doi or zotero.arxiv_id(item)) and not args.allow_upload:
+        raise NoRoute("item has no DOI or arXiv id; pass --allow-upload to send its PDF to MinerU")
+    zotero_settings = config.get("zotero", {})
+    attachment = zotero.pdf_attachment(
+        zotero_settings.get("local_api_url", zotero.DEFAULT_URL), item.key, zotero_settings.get("data_dir", ""))
+    if attachment is None or not attachment.path.is_file():
+        raise NoRoute("Zotero has no local PDF for this item")
+    found = pdf_check.embedded_annotations(attachment.path)
+    if found and not args.allow_annotated:
+        raise NoRoute(f"PDF contains embedded annotations {sorted(found)}; pass --allow-annotated to upload it")
+    digest = hashlib.sha256(attachment.path.read_bytes()).hexdigest()
+    try:
+        body = client.parse_file(attachment.path, assets)
+    except mineru.MineruError as e:
+        raise NoRoute(f"MinerU could not read the uploaded PDF: {e}") from None
+    if _is_doubled(body):
+        raise NoRoute("the Zotero PDF has a bad text layer; pass --pdf-url with a clean public copy")
+    source = f"https://doi.org/{doi}" if doi else f"Zotero item {item.key}"
+    return Extraction(title, _strip_title(body, title), source, f"{extractor} (upload)", published,
+                      choice.note if choice else "", f"Zotero attachment {attachment.key}, sha256:{digest}")
+
+
+def _render(extraction, item):
     lines = [
-        f"# {result.title or paper.title}", "",
-        f"> Source: https://arxiv.org/abs/{paper.arxiv_id}v{paper.version}",
+        f"# {extraction.title}", "",
+        f"> Source: {extraction.source}",
         f"> Collected: {date.today().isoformat()}",
-        f"> Published: {(item.date if item else '') or paper.published}",
-        f"> Extractor: arxiv-html (arXiv LaTeXML, v{paper.version})",
+        f"> Published: {(item.date if item else '') or extraction.published or 'Unknown'}",
+        f"> Extractor: {extraction.extractor}",
     ]
     if item:
         lines.append(f"> Zotero: {item.key}")
         if item.doi:
             lines.append(f"> DOI: {item.doi}")
-    if note:
-        lines.append(f"> Version-note: {note}")
-    if result.errors:
-        lines.append(f"> Extraction-warnings: {result.errors} conversion errors; review before compiling")
-    return "\n".join(lines) + "\n\n" + result.markdown
+    if extraction.original:
+        lines.append(f"> Original: {extraction.original}")
+    if extraction.note:
+        lines.append(f"> Version-note: {extraction.note}")
+    if extraction.errors:
+        lines.append(f"> Extraction-warnings: {extraction.errors} conversion errors; review before compiling")
+    return "\n".join(lines) + "\n\n" + extraction.body
 
 
 def main(argv=None):
@@ -77,39 +184,43 @@ def main(argv=None):
     source.add_argument("--arxiv", help="arXiv id, without using Zotero")
     parser.add_argument("--out", required=True, help="output Markdown path under raw/")
     parser.add_argument("--config", default="config.json")
+    parser.add_argument("--pdf-url", help="public PDF of the same version; tried before other PDF routes")
+    parser.add_argument("--allow-upload", action="store_true", help="upload a PDF that has no DOI or arXiv id")
+    parser.add_argument("--allow-annotated", action="store_true", help="upload a PDF with embedded annotations")
     args = parser.parse_args(argv)
 
     out = Path(args.out)
     if out.exists():
         print(f"error: {out} exists; raw files are not overwritten", file=sys.stderr)
         return 2
+    config = _load_config(args.config)
+    assets = out.with_name(out.stem + ".assets")
 
     try:
         item = None
         if args.arxiv:
             choice = Choice(arxiv.lookup(args.arxiv), "")
         else:
-            item = zotero.find(_zotero_url(args.config), key=args.key, doi=args.doi, title=args.title)
+            url = config.get("zotero", {}).get("local_api_url", zotero.DEFAULT_URL)
+            item = zotero.find(url, key=args.key, doi=args.doi, title=args.title)
             choice = choose_arxiv(item, arxiv.lookup, arxiv.search)
-        if choice is None:
-            print(f"no route: no matching arXiv version. {NEXT_ROUTES}", file=sys.stderr)
-            return 3
-        html, base = arxiv.fetch_html(choice.paper)
+        extraction = _from_arxiv_html(choice) if choice else None
+        if extraction is None:
+            extraction = _from_mineru(item, choice, config, args, assets)
+    except NoRoute as e:
+        shutil.rmtree(assets, ignore_errors=True)
+        print(f"no route: {e}", file=sys.stderr)
+        return 3
     except (LookupError, OSError, urllib.error.URLError) as e:
+        shutil.rmtree(assets, ignore_errors=True)
         print(f"error: {e}", file=sys.stderr)
         return 2
 
-    try:
-        result = convert(html, base)
-    except ValueError:
-        print(f"no route: arXiv has no HTML for {choice.paper.arxiv_id}. {NEXT_ROUTES}", file=sys.stderr)
-        return 3
-
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_render(result, item, choice.paper, choice.note), encoding="utf-8", newline="\n")
-    print(f"wrote {out}: {result.equations} display equations, {result.tables} tables, {result.errors} errors")
-    if choice.note:
-        print(f"note: {choice.note}")
+    out.write_text(_render(extraction, item), encoding="utf-8", newline="\n")
+    print(f"wrote {out}: {extraction.extractor}, {len(extraction.body)} chars, {extraction.errors} errors")
+    if extraction.note:
+        print(f"note: {extraction.note}")
     return 0
 
 

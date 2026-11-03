@@ -4,6 +4,7 @@ import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 
 DEFAULT_URL = "http://localhost:23119/api/users/0"
 NON_BIBLIOGRAPHIC = {"note", "attachment", "annotation"}
@@ -21,6 +22,12 @@ class Item:
     extra: str
     date: str
     first_author: str
+
+
+@dataclass
+class Attachment:
+    key: str
+    path: Path
 
 
 def norm_title(title):
@@ -61,6 +68,20 @@ def find(base=DEFAULT_URL, key=None, doi=None, title=None):
     if len(matches) != 1:
         raise LookupError(f"expected one Zotero item, found {len(matches)}: {[m.key for m in matches]}")
     return matches[0]
+
+
+def pdf_attachment(base, item_key, data_dir):
+    """Return the item's PDF, preferring a copy stored by Zotero over a linked file."""
+    children = [c for c in _get(base, f"items/{item_key}/children")
+                if c["data"].get("itemType") == "attachment" and c["data"].get("contentType") == "application/pdf"]
+    for child in children:
+        data = child["data"]
+        if data.get("linkMode") in ("imported_file", "imported_url") and data.get("filename"):
+            return Attachment(child["key"], Path(data_dir) / "storage" / child["key"] / data["filename"])
+    for child in children:
+        if child["data"].get("linkMode") == "linked_file" and child["data"].get("path"):
+            return Attachment(child["key"], Path(child["data"]["path"]))
+    return None
 
 
 def arxiv_id(item):
