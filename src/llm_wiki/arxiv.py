@@ -6,6 +6,8 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 
+from . import net
+
 API = "https://export.arxiv.org/api/query"
 ATOM = "{http://www.w3.org/2005/Atom}"
 USER_AGENT = "llm-wiki-extract/0.1"
@@ -22,7 +24,7 @@ class Paper:
 
 def _get(url):
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    return urllib.request.urlopen(req, timeout=60)
+    return net.urlopen(req, timeout=60)
 
 
 def _parse_feed(data):

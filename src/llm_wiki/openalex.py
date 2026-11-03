@@ -4,6 +4,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from . import net
+
 
 def published_pdf(work):
     locations = [work.get("best_oa_location") or {}] + (work.get("locations") or [])
@@ -18,7 +20,7 @@ def find_published_pdf(doi):
     url = "https://api.openalex.org/works/doi:" + urllib.parse.quote(doi, safe="/")
     request = urllib.request.Request(url, headers={"User-Agent": "llm-wiki-extract/0.1"})
     try:
-        with urllib.request.urlopen(request, timeout=30) as resp:
+        with net.urlopen(request, timeout=30) as resp:
             return published_pdf(json.load(resp))
     except (OSError, ValueError):
         return None

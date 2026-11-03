@@ -9,12 +9,14 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import urllib.error
-from dataclasses import dataclass
+import urllib.request
+from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
 
-from . import arxiv, mineru, openalex, pdf_check, quality, zotero
+from . import arxiv, cleanup, mineru, net, openalex, pdf_check, quality, verify, zotero
 from .arxiv_html import convert
 
 PREPRINT_NOTE = "arXiv preprint of the Zotero item; content may differ from the published version"
@@ -37,6 +39,10 @@ class Extraction:
     note: str = ""
     original: str = ""
     errors: int = 0
+    image_tables: int = 0
+    reference: object = None
+    repairs: str = ""
+    verification: str = ""
 
 
 class NoRoute(Exception):
@@ -96,7 +102,8 @@ def _from_arxiv_html(choice):
         result.title or paper.title, result.markdown,
         f"https://arxiv.org/abs/{paper.arxiv_id}v{paper.version}",
         f"arxiv-html (arXiv LaTeXML, v{paper.version})",
-        paper.published, choice.note, errors=result.errors,
+        paper.published, choice.note, errors=result.errors, image_tables=result.image_tables,
+        reference=f"https://arxiv.org/pdf/{paper.arxiv_id}v{paper.version}",
     )
 
 
@@ -126,7 +133,8 @@ def _from_mineru(item, choice, config, args, assets):
             continue
         if _is_doubled(body):
             continue
-        return Extraction(title, _strip_title(body, title), url, f"{extractor} (url)", published, note)
+        body = _strip_title(cleanup.drop_cover(body, title), title)
+        return Extraction(title, body, url, f"{extractor} (url)", published, note, reference=url)
 
     if not item:
         raise NoRoute("no public PDF was readable and no Zotero item was given")
@@ -148,8 +156,50 @@ def _from_mineru(item, choice, config, args, assets):
     if _is_doubled(body):
         raise NoRoute("the Zotero PDF has a bad text layer; pass --pdf-url with a clean public copy")
     source = f"https://doi.org/{doi}" if doi else f"Zotero item {item.key}"
-    return Extraction(title, _strip_title(body, title), source, f"{extractor} (upload)", published,
-                      choice.note if choice else "", f"Zotero attachment {attachment.key}, sha256:{digest}")
+    body = _strip_title(cleanup.drop_cover(body, title), title)
+    return Extraction(title, body, source, f"{extractor} (upload)", published,
+                      choice.note if choice else "", f"Zotero attachment {attachment.key}, sha256:{digest}",
+                      reference=attachment.path)
+
+
+def _reference_pages(reference):
+    """Return the text layer of a local path or URL, or None if unavailable."""
+    if reference is None:
+        return None
+    if isinstance(reference, Path):
+        return verify.read_pages(reference)
+    request = urllib.request.Request(reference, headers={"User-Agent": arxiv.USER_AGENT})
+    try:
+        with net.urlopen(request, timeout=120) as resp, tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "reference.pdf"
+            path.write_bytes(resp.read())
+            return verify.read_pages(path)
+    except OSError:
+        return None
+
+
+def _apply_repairs(extraction, pages):
+    extraction.body, urls = cleanup.fix_url_schemes(extraction.body)
+    ligatures = running = 0
+    if pages:
+        extraction.body, running = cleanup.drop_lines(extraction.body, verify.edge_lines(pages))
+        extraction.body, ligatures = cleanup.repair_ligatures(extraction.body, pages)
+    if ligatures or urls or running:
+        extraction.repairs = f"{ligatures} ligature words, {urls} URL schemes, {running} running lines"
+
+
+def _verify(extraction, pages, check_path):
+    if not pages:
+        extraction.verification = "skipped (no readable PDF text layer)"
+        return
+    report = verify.compare(extraction.body, pages)
+    low = ", ".join(map(str, report.low_pages)) or "none"
+    extraction.verification = (
+        f"pdf-text-layer; word coverage {report.coverage:.0%}; low-coverage pages: {low}; "
+        f"numbers not in PDF: {len(report.extra_numbers)}"
+    )
+    check_path.parent.mkdir(parents=True, exist_ok=True)
+    check_path.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8", newline="\n")
 
 
 def _render(extraction, item):
@@ -168,8 +218,17 @@ def _render(extraction, item):
         lines.append(f"> Original: {extraction.original}")
     if extraction.note:
         lines.append(f"> Version-note: {extraction.note}")
+    if extraction.repairs:
+        lines.append(f"> Repairs: {extraction.repairs}")
+    if extraction.verification:
+        lines.append(f"> Verification: {extraction.verification}")
+    warnings = []
     if extraction.errors:
-        lines.append(f"> Extraction-warnings: {extraction.errors} conversion errors; review before compiling")
+        warnings.append(f"{extraction.errors} conversion errors; review before compiling")
+    if extraction.image_tables:
+        warnings.append(f"{extraction.image_tables} tables are images; their data is not in this text")
+    if warnings:
+        lines.append("> Extraction-warnings: " + "; ".join(warnings))
     return "\n".join(lines) + "\n\n" + extraction.body
 
 
@@ -216,9 +275,16 @@ def main(argv=None):
         print(f"error: {e}", file=sys.stderr)
         return 2
 
+    pages = _reference_pages(extraction.reference)
+    if extraction.extractor.startswith("mineru"):
+        _apply_repairs(extraction, pages)
+    _verify(extraction, pages, out.with_name(out.stem + ".check.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(_render(extraction, item), encoding="utf-8", newline="\n")
     print(f"wrote {out}: {extraction.extractor}, {len(extraction.body)} chars, {extraction.errors} errors")
+    print(f"verification: {extraction.verification}")
+    if extraction.repairs:
+        print(f"repairs: {extraction.repairs}")
     if extraction.note:
         print(f"note: {extraction.note}")
     return 0

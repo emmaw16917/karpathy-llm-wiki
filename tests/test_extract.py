@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -88,6 +89,17 @@ class ConvertTest(unittest.TestCase):
         self.assertEqual(self.result.errors, 0)
         self.assertNotIn("# My Paper", self.md)
 
+    def test_table_stored_as_svg_keeps_link_and_is_counted(self):
+        page = ('<article class="ltx_document"><figure class="ltx_table">'
+                '<figcaption class="ltx_caption">TABLE I: Datasets</figcaption>'
+                '<object type="image/svg+xml" data="1910.00409v1/datasets.svg"></object></figure></article>')
+        result = convert(page, "https://arxiv.org/html/1910.00409v1")
+        self.assertIn("![TABLE I: Datasets](https://arxiv.org/html/1910.00409v1/datasets.svg)", result.markdown)
+        self.assertEqual(result.image_tables, 1)
+
+    def test_figure_image_is_not_counted_as_table(self):
+        self.assertEqual(self.result.image_tables, 0)
+
     def test_latexml_errors_are_counted(self):
         bad = PAGE.replace("Note<", '<span class="ltx_ERROR">\\foo</span>Note<')
         self.assertEqual(convert(bad, "https://x/").errors, 1)
@@ -151,6 +163,7 @@ class WriteRawTest(unittest.TestCase):
         paper = arxiv.Paper("2401.00001", 2, "Great", ["Ada Liu"], "2024-01-01")
         env = {k: v for k, v in os.environ.items() if k != "MINERU_API_TOKEN"}
         with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(cli, "_reference_pages", return_value=None), \
                 mock.patch.object(cli.zotero, "find", return_value=it), \
                 mock.patch.object(cli.arxiv, "lookup", return_value=paper), \
                 mock.patch.object(cli.arxiv, "fetch_html", return_value=(html, "https://arxiv.org/html/2401.00001v2/")):
@@ -166,6 +179,15 @@ class WriteRawTest(unittest.TestCase):
                 self.assertIn(line, text)
             self.assertEqual(self.run_main(out), 2)
             self.assertEqual(out.read_text(encoding="utf-8"), text)
+
+    def test_image_tables_are_warned_in_header(self):
+        page = PAGE.replace('<table class="ltx_tabular"><thead>', '<object data="t.svg"></object><table class="x" hidden><thead>', 1)
+        page = page.replace('<figure class="ltx_table">', '<figure class="ltx_table">', 1)
+        only_image = re.sub(r'<table class="x".*?</table>', "", page, count=1, flags=re.S)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "p.md"
+            self.assertEqual(self.run_main(out, html=only_image), 0)
+            self.assertIn("> Extraction-warnings: 1 tables are images; their data is not in this text", out.read_text(encoding="utf-8"))
 
     def test_no_html_reports_next_route_and_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:

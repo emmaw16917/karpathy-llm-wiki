@@ -65,7 +65,8 @@ class GateRouteTest(unittest.TestCase):
         self.item = Item("K", "conferencePaper", "Title", "10.1/x", "", "", "", "2020", "Sun")
 
     def run_cli(self, *extra):
-        with mock.patch.object(cli.zotero, "find", return_value=self.item), \
+        with mock.patch.object(cli, "_reference_pages", return_value=None), \
+                mock.patch.object(cli.zotero, "find", return_value=self.item), \
                 mock.patch.object(cli.zotero, "pdf_attachment", return_value=zotero.Attachment("A", self.pdf)), \
                 mock.patch.object(cli.arxiv, "search", return_value=[]), \
                 mock.patch.object(cli.openalex, "find_published_pdf", return_value=None), \

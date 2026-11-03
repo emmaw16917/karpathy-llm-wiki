@@ -1,0 +1,24 @@
+# TODO
+
+## Extraction accuracy
+
+- [ ] Reading order: MinerU can place text in the wrong spot. Example: a third author appears after `## 1 INTRODUCTION` in Learned Index. The text layer cannot detect this, because the words are all present.
+- [ ] Lost ligatures outside the PDF vocabulary: `repair_ligatures` only restores words the PDF text layer confirms. Ambiguous spellings and PDFs that use private-use glyphs (such as `hps` in ACM files) stay unrepaired.
+- [ ] Formula accuracy for the MinerU route: only papers with LaTeX source can be checked strictly; the text layer does not catch wrong subscripts.
+- [ ] Tables stored as images: arXiv HTML can hold a table as SVG (Logzip Tables I and II). Decide whether to read the SVG text or route these papers to MinerU or LaTeX.
+- [ ] Review flagged pages visually: render pages that verification flags and check them against the Markdown.
+
+## Routes
+
+- [ ] arXiv LaTeX through Pandoc, for papers with source but no HTML.
+- [ ] Publisher HTML.
+- [ ] Better public PDF discovery: OpenAlex misses PDFs that are public, such as VLDB.
+- [ ] Retry a public PDF once when MinerU reports `failed to read file`, before falling back to upload.
+- [ ] Normalize LaTeX in `check_evidence.py`, so `99.9\%` in raw matches `99.9%` in an article.
+
+## Packaging
+
+- [ ] Plugin layout, with `SKILL.md` calling `llm-wiki-extract`.
+- [ ] Update `SKILL.md`: raw file header, `.check.json`, and the rule for re-extracting raw files.
+- [ ] Read the MinerU privacy terms and file retention policy before batch uploads.
+- [ ] Check the licenses of optional engines before release.

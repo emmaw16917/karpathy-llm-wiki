@@ -22,6 +22,7 @@ class Result:
     errors: int
     tables: int
     equations: int
+    image_tables: int = 0
 
 
 class Node:
@@ -81,6 +82,7 @@ class _Renderer:
         self.errors = 0
         self.tables = 0
         self.equations = 0
+        self.image_tables = 0
         self.out = []
 
     def inline(self, node):
@@ -134,7 +136,8 @@ class _Renderer:
         return f"${alt}$"
 
     def _image(self, node, caption):
-        return f"![{caption}]({urljoin(self.base_url, node.attrs.get('src', ''))})"
+        source = node.attrs.get("src") or node.attrs.get("data", "")
+        return f"![{caption}]({urljoin(self.base_url, source)})"
 
     def _para(self, text):
         for piece in re.split(r"\n{2,}", text.strip()):
@@ -225,8 +228,10 @@ class _Renderer:
     def _figure(self, figure):
         caption_node = next((c for c in figure.nodes() if c.tag == "figcaption"), None)
         caption = self.text_of(caption_node) if caption_node else ""
-        images = [n for n in figure.walk() if n.tag == "img"]
+        images = [n for n in figure.walk() if n.tag == "img" or (n.tag == "object" and n.attrs.get("data"))]
         if images and not figure.find(lambda n: n.tag == "table" or n.has_class("ltx_listing")):
+            if figure.has_class("ltx_table"):
+                self.image_tables += 1
             for i, image in enumerate(images):
                 self.out.append(self._image(image, caption if i == 0 else ""))
             return
@@ -269,4 +274,5 @@ def convert(html, base_url):
     title = renderer.text_of(title_node) if title_node else ""
     for child in article.nodes():
         renderer.block(child)
-    return Result("\n\n".join(renderer.out) + "\n", title, renderer.errors, renderer.tables, renderer.equations)
+    return Result("\n\n".join(renderer.out) + "\n", title, renderer.errors, renderer.tables, renderer.equations,
+                  renderer.image_tables)

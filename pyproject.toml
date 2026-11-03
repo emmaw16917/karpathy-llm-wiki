@@ -5,7 +5,7 @@ description = "LLM-maintained personal knowledge base skill, forked from karpath
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
-dependencies = []
+dependencies = ["pypdf>=5"]
 
 [project.scripts]
 llm-wiki-extract = "llm_wiki.cli:main"

@@ -10,8 +10,11 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 
+from . import net
+
 DEFAULT_BASE = "https://mineru.net/api/v4"
 MODEL = "vlm"
+DOWNLOAD_ATTEMPTS = 4
 
 
 class MineruError(Exception):
@@ -36,7 +39,11 @@ def put_signed(url, path):
 def unpack(data, assets):
     """Return full.md from a result zip, saving its images under the assets directory."""
     assets = Path(assets)
-    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile:
+        raise MineruError("result is not a valid zip") from None
+    with archive:
         names = archive.namelist()
         if "full.md" not in names:
             raise MineruError("result has no full.md")
@@ -64,7 +71,7 @@ class Client:
             headers={"Authorization": f"Bearer {self.token}", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=60) as resp:
+            with net.urlopen(request, timeout=60) as resp:
                 result = json.load(resp)
         except (OSError, ValueError) as e:
             raise MineruError(f"API request failed: {type(e).__name__}") from None
@@ -88,11 +95,14 @@ class Client:
 
     @staticmethod
     def _download(url):
-        try:
-            with urllib.request.urlopen(url, timeout=300) as resp:
-                return resp.read()
-        except OSError as e:
-            raise MineruError(f"result download failed: {type(e).__name__}") from None
+        for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+            try:
+                with net.urlopen(url, timeout=300) as resp:
+                    return resp.read()
+            except (OSError, http.client.HTTPException) as e:
+                if attempt == DOWNLOAD_ATTEMPTS:
+                    raise MineruError(f"result download failed: {type(e).__name__}") from None
+                time.sleep(5 * attempt)
 
     def parse_url(self, url, assets):
         task = self._api("/extract/task", {"url": url, **self._options()})["task_id"]

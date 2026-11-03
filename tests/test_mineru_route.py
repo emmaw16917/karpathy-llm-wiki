@@ -68,6 +68,30 @@ class UploadTest(unittest.TestCase):
         self.assertNotIn("SECRET", str(caught.exception))
 
 
+class DownloadTest(unittest.TestCase):
+    @staticmethod
+    def response(read):
+        resp = mock.MagicMock()
+        resp.__enter__.return_value.read.side_effect = read
+        return resp
+
+    def test_truncated_download_is_retried(self):
+        responses = [self.response(mineru.http.client.IncompleteRead(b"x", 9)), self.response([b"OK"])]
+        with mock.patch.object(mineru.net, "urlopen", side_effect=responses), \
+                mock.patch.object(mineru.time, "sleep"):
+            self.assertEqual(mineru.Client._download("https://x/a.zip"), b"OK")
+
+    def test_repeated_truncation_becomes_mineru_error(self):
+        truncated = mineru.http.client.IncompleteRead(b"x", 9)
+        with mock.patch.object(mineru.net, "urlopen", side_effect=lambda *a, **k: self.response(truncated)), \
+                mock.patch.object(mineru.time, "sleep"), self.assertRaises(mineru.MineruError):
+            mineru.Client._download("https://x/a.zip")
+
+    def test_corrupt_zip_is_mineru_error(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(mineru.MineruError):
+            mineru.unpack(b"not a zip", Path(tmp) / "a")
+
+
 class AnnotationCheckTest(unittest.TestCase):
     def check(self, data):
         with tempfile.TemporaryDirectory() as tmp:
@@ -145,6 +169,7 @@ class RouteTest(unittest.TestCase):
     def run_cli(self, *extra, oa=None, attachment=True, item=None):
         att = zotero.Attachment("ATT", self.pdf) if attachment else None
         with mock.patch.dict(os.environ), \
+                mock.patch.object(cli, "_reference_pages", return_value=None), \
                 mock.patch.object(cli.zotero, "find", return_value=item or self.item), \
                 mock.patch.object(cli.zotero, "pdf_attachment", return_value=att), \
                 mock.patch.object(cli.arxiv, "search", return_value=[]), \
