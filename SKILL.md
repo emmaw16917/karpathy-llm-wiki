@@ -15,7 +15,7 @@ Core ideas from Karpathy:
 
 Three layers, all under the user's project root:
 
-**raw/** — Immutable source material. You read, never modify. Organized by topic subdirectories (e.g., `raw/machine-learning/`).
+**raw/** — Immutable source material. You read, never edit by hand. The only permitted change is a logged re-extraction (see Re-extracting a raw file). Organized by topic subdirectories (e.g., `raw/machine-learning/`). Images live in `raw/assets/<raw-file-stem>/`.
 
 **wiki/** — Compiled knowledge articles. You have full ownership. Organized by topic subdirectories, one level only: `wiki/<topic>/<article>.md`. Contains two special files:
 - `wiki/index.md` — Global index. One row per article, grouped by topic, with link + summary + Updated date.
@@ -38,7 +38,7 @@ If Query or Lint cannot find the wiki structure, tell the user: "Run an ingest f
 
 ## The Grounding Invariant
 
-Every load-bearing fact in wiki/ — numbers, dates, direct quotes — exists verbatim in the raw/ files linked by that article's Raw field. Compile *establishes* this invariant (locate before you write); lint *verifies* it (`scripts/check_evidence.py` greps the high-signal literals — suffixed or large numbers, decimals, ISO dates, longer quotes — in the linked raws; the compile-time locate-before-write rule covers the rest). Because raw/ is immutable, a verified article stays verified; the script re-checks the whole wiki in seconds, so there is no incremental state to maintain.
+Every load-bearing fact in wiki/ — numbers, dates, direct quotes — exists verbatim in the raw/ files linked by that article's Raw field. Compile *establishes* this invariant (locate before you write); lint *verifies* it (`scripts/check_evidence.py` greps the high-signal literals — suffixed or large numbers, decimals, ISO dates, longer quotes — in the linked raws; the compile-time locate-before-write rule covers the rest). Because raw/ changes only through a logged re-extraction, a verified article stays verified until then; the script re-checks the whole wiki in seconds, so there is no incremental state to maintain.
 
 ---
 
@@ -48,7 +48,7 @@ Fetch a source into raw/, then compile it into wiki/ — unless the source adds 
 
 ### Fetch (raw/)
 
-1. Get the source content using whatever web or file tools your environment provides. If nothing can reach the source, ask the user to paste it directly.
+1. Get the source content. For papers, use the extractor (see Extracting papers). For web pages and other files, use whatever web or file tools your environment provides. If nothing can reach the source, ask the user to paste it directly.
 
 2. Pick a topic directory. Check existing `raw/` subdirectories first; reuse one if the topic is close enough. Create a new subdirectory only for genuinely distinct topics.
 
@@ -60,6 +60,64 @@ Fetch a source into raw/, then compile it into wiki/ — unless the source adds 
    - Preserve original text. Clean formatting noise. Do not rewrite opinions.
 
    See `references/raw-template.md` for the exact format.
+
+### Extracting papers
+
+Use the extractor for any paper in Zotero or on arXiv. It writes the raw file, its header, and its images, so do not write or edit them yourself:
+
+```
+uv run --project <skill-dir> llm-wiki-extract --key <zotero-key> --out raw/<topic>/<file>.md --config <skill-dir>/config.json
+```
+
+Instead of `--key`, you can pass `--doi`, `--title`, or `--arxiv <id>`. Zotero must be running with its local API enabled, unless you use `--arxiv`.
+
+The extractor tries these routes in order and records the one it used in the Extractor field:
+
+1. arXiv HTML. A published item may use its arXiv version when the title and first author match; the header then carries a Version-note.
+2. A public PDF of the published version through MinerU. Pass `--pdf-url` to name a clean copy.
+3. The Zotero PDF uploaded to MinerU.
+
+Upload sends the user's file to an outside service. These flags override a refusal, so pass them only when the user has approved that upload:
+
+- `--allow-upload` — the item has no DOI or arXiv id.
+- `--allow-annotated` — the PDF contains embedded annotations.
+
+Exit codes: 0 written, 2 error, 3 no usable route. On 3, tell the user the printed reason. Do not substitute a manual extraction without asking, because a PDF rejected for a bad text layer would reintroduce the same damage.
+
+After extracting, read these header fields before compiling:
+
+- **Verification** — compares the text with the PDF text layer. Page numbers and values are in `<file>.check.json` beside the raw file. Treat results as review hints: chart labels exist only in the PDF, and the check cannot see wrong subscripts or misplaced text.
+  - `low-coverage pages` — content may be missing, or may be inside an image. Look at those pages.
+  - `numbers not in PDF` — possible misreads. Check each one before relying on it.
+  - `PDF numbers not in text` — a large count can mean a lost table.
+- **Extraction-warnings** — unresolved problems, such as tables that remain images. Do not state facts from a table whose data is not in the text.
+- **Version-note** — the text is a preprint. Say so in the article's Sources field when a load-bearing fact comes from it.
+- **Table-source** — these tables came from MinerU, while the rest of the text came from arXiv HTML.
+
+Report flagged items to the user. Never correct numbers in raw/ by hand.
+
+### Re-extracting a raw file
+
+Use this only when a raw file is wrong, for example after verification finds a lost table, or the user supplies a better PDF:
+
+```
+uv run --project <skill-dir> llm-wiki-extract --key <zotero-key> --out raw/<topic>/<file>.md --config <skill-dir>/config.json --replace --reason "<why>"
+```
+
+On success, the old raw file and its images are deleted and the new header records the old file's hash in the Replaces field. If extraction fails, the old version stays untouched.
+
+Then:
+
+1. Find the articles whose Raw field links to this file.
+2. Run `scripts/check_evidence.py` on those articles. Each suspect may be a fact that changed, so check it against the new raw file and update the article. Mark a corrected claim with a Status block rather than rewriting it silently.
+3. Append to `wiki/log.md`:
+
+```
+## [YYYY-MM-DD] re-extract | <project-root-relative raw file path>
+- Reason: <why>
+- Replaced: <sha256 from the Replaces field>
+- Articles checked: <article titles, or none>
+```
 
 ### Triage
 

@@ -45,6 +45,7 @@ class Extraction:
     image_tables: int = 0
     remote_images: int = 0
     table_source: str = ""
+    replaces: str = ""
     reference: object = None
     repairs: str = ""
     verification: str = ""
@@ -289,6 +290,8 @@ def _render(extraction, item):
         lines.append(f"> Original: {extraction.original}")
     if extraction.note:
         lines.append(f"> Version-note: {extraction.note}")
+    if extraction.replaces:
+        lines.append(f"> Replaces: {extraction.replaces}")
     if extraction.table_source:
         lines.append(f"> Table-source: {extraction.table_source}")
     if extraction.repairs:
@@ -321,17 +324,30 @@ def main(argv=None):
     parser.add_argument("--pdf-url", help="public PDF of the same version; tried before other PDF routes")
     parser.add_argument("--allow-upload", action="store_true", help="upload a PDF that has no DOI or arXiv id")
     parser.add_argument("--allow-annotated", action="store_true", help="upload a PDF with embedded annotations")
+    parser.add_argument("--replace", action="store_true",
+                        help="re-extract an existing raw file; the old file and images are deleted on success")
+    parser.add_argument("--reason", help="why the raw file is being replaced; required with --replace")
     args = parser.parse_args(argv)
 
     out = Path(args.out)
-    if out.exists():
-        print(f"error: {out} exists; raw files are not overwritten", file=sys.stderr)
-        return 2
+    final_assets = _asset_dir(out)
+    replaces = ""
+    if args.replace:
+        if not args.reason or not out.is_file():
+            print("error: --replace needs --reason and an existing --out file", file=sys.stderr)
+            return 2
+        replaces = f"sha256:{hashlib.sha256(out.read_bytes()).hexdigest()} ({args.reason})"
+        assets = final_assets.with_name(final_assets.name + ".new")
+        shutil.rmtree(assets, ignore_errors=True)
+    else:
+        if out.exists():
+            print(f"error: {out} exists; pass --replace --reason to re-extract it", file=sys.stderr)
+            return 2
+        if final_assets.exists():
+            print(f"error: {final_assets} exists; choose another file name or remove it", file=sys.stderr)
+            return 2
+        assets = final_assets
     config = _load_config(args.config)
-    assets = _asset_dir(out)
-    if assets.exists():
-        print(f"error: {assets} exists; choose another file name or remove it", file=sys.stderr)
-        return 2
 
     try:
         item = None
@@ -355,13 +371,20 @@ def main(argv=None):
 
     if extraction.image_tables:
         _fill_image_tables(extraction, config)
-    extraction.body, extraction.remote_images = _localize_images(extraction.body, assets, _asset_link(out, assets))
+    extraction.replaces = replaces
+    extraction.body, extraction.remote_images = _localize_images(extraction.body, assets, _asset_link(out, final_assets))
     pages = _reference_pages(extraction.reference)
     if extraction.extractor.startswith("mineru"):
         _apply_repairs(extraction, pages)
     _verify(extraction, pages, out.with_name(out.stem + ".check.json"))
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(_render(extraction, item), encoding="utf-8", newline="\n")
+    temporary = out.with_name(out.name + ".tmp")
+    temporary.write_text(_render(extraction, item), encoding="utf-8", newline="\n")
+    os.replace(temporary, out)
+    if assets != final_assets:
+        shutil.rmtree(final_assets, ignore_errors=True)
+        if assets.exists():
+            os.replace(assets, final_assets)
     print(f"wrote {out}: {extraction.extractor}, {len(extraction.body)} chars, {extraction.errors} errors")
     print(f"verification: {extraction.verification}")
     if extraction.repairs:
