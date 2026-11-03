@@ -3,10 +3,10 @@
 **A reusable skill for building Karpathy-style LLM wikis with Claude Code, Cursor, Codex, and other Agent Skills tools.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/Astro-Han/karpathy-llm-wiki?style=social)](https://github.com/Astro-Han/karpathy-llm-wiki)
-[![GitHub forks](https://img.shields.io/github/forks/Astro-Han/karpathy-llm-wiki?style=social)](https://github.com/Astro-Han/karpathy-llm-wiki)
+[![GitHub stars](https://img.shields.io/github/stars/emmaw16917/karpathy-llm-wiki?style=social)](https://github.com/emmaw16917/karpathy-llm-wiki)
+[![GitHub forks](https://img.shields.io/github/forks/emmaw16917/karpathy-llm-wiki?style=social)](https://github.com/emmaw16917/karpathy-llm-wiki)
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-compatible-blue)](https://agentskills.io)
-[![Install](https://img.shields.io/badge/Install-npx_add--skill-green)](https://github.com/Astro-Han/karpathy-llm-wiki#install)
+[![Install](https://img.shields.io/badge/Install-npx_add--skill-green)](https://github.com/emmaw16917/karpathy-llm-wiki#install)
 
 <p align="center">
   <img src="assets/karpathy-tweet.png" alt="Karpathy's tweet about LLM Wiki" width="560">
@@ -62,7 +62,7 @@ See [examples/](examples/) for sample wiki pages, source files, and operation lo
 ## Install
 
 ```bash
-npx add-skill Astro-Han/karpathy-llm-wiki
+npx add-skill emmaw16917/karpathy-llm-wiki
 ```
 
 Works with any tool that supports the [Agent Skills](https://agentskills.io) standard.
@@ -116,10 +116,10 @@ This skill follows the [agentskills.io](https://agentskills.io) open standard:
 
 | Tool | Install method |
 |------|----------------|
-| Claude Code | `npx add-skill Astro-Han/karpathy-llm-wiki` |
-| Cursor | `npx add-skill Astro-Han/karpathy-llm-wiki` |
+| Claude Code | `npx add-skill emmaw16917/karpathy-llm-wiki` |
+| Cursor | `npx add-skill emmaw16917/karpathy-llm-wiki` |
 | Codex CLI | Copy to `.agents/skills/karpathy-llm-wiki/` |
-| OpenCode | `npx add-skill Astro-Han/karpathy-llm-wiki` |
+| OpenCode | `npx add-skill emmaw16917/karpathy-llm-wiki` |
 | Other tools | Copy `SKILL.md`, `references/`, and `scripts/` into the tool's skill directory |
 
 ## FAQ
