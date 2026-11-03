@@ -3,3 +3,5 @@
 *.swo
 *~
 __pycache__/
+config.json
+.venv/

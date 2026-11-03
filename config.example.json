@@ -1,0 +1,16 @@
+{
+  "mineru": {
+    "api_token": "",
+    "base_url": "https://mineru.net/api/v4"
+  },
+  "zotero": {
+    "data_dir": "D:/ZoteroFiles",
+    "local_api_url": "http://localhost:23119/api/users/0",
+    "web_api_key": "",
+    "web_user_id": ""
+  },
+  "upload_policy": {
+    "allow_with_doi_or_arxiv": true,
+    "confirm_others": true
+  }
+}
