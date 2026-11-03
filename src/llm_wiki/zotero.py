@@ -1,0 +1,78 @@
+"""Read-only lookups through Zotero's local HTTP API."""
+import json
+import re
+import urllib.parse
+import urllib.request
+from dataclasses import dataclass
+
+DEFAULT_URL = "http://localhost:23119/api/users/0"
+NON_BIBLIOGRAPHIC = {"note", "attachment", "annotation"}
+ARXIV_ID = r"(\d{4}\.\d{4,5}|[a-z-]+(?:\.[A-Z]{2})?/\d{7})"
+
+
+@dataclass
+class Item:
+    key: str
+    item_type: str
+    title: str
+    doi: str
+    url: str
+    archive_id: str
+    extra: str
+    date: str
+    first_author: str
+
+
+def norm_title(title):
+    return re.sub(r"[\W_]+", "", title).casefold()
+
+
+def _item(raw):
+    d = raw["data"]
+    creators = d.get("creators") or [{}]
+    return Item(
+        d["key"], d["itemType"], d.get("title", ""), d.get("DOI", ""), d.get("url", ""),
+        d.get("archiveID", ""), d.get("extra", ""), d.get("date", ""),
+        creators[0].get("lastName") or creators[0].get("name", ""),
+    )
+
+
+def _get(base, path):
+    req = urllib.request.Request(f"{base}/{path}", headers={"Zotero-Allowed-Request": "1"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.load(resp)
+
+
+def _search(base, text, qmode):
+    query = urllib.parse.urlencode({"q": text, "qmode": qmode, "itemType": "-attachment", "limit": 50})
+    return [_item(r) for r in _get(base, f"items?{query}") if r["data"]["itemType"] not in NON_BIBLIOGRAPHIC]
+
+
+def find(base=DEFAULT_URL, key=None, doi=None, title=None):
+    """Return the single matching item, or raise LookupError."""
+    if key:
+        return _item(_get(base, f"items/{key}"))
+    if doi:
+        wanted = doi.casefold()
+        matches = [i for i in _search(base, doi, "everything") if i.doi.casefold() == wanted]
+    else:
+        wanted = norm_title(title)
+        matches = [i for i in _search(base, title, "titleCreatorYear") if norm_title(i.title) == wanted]
+    if len(matches) != 1:
+        raise LookupError(f"expected one Zotero item, found {len(matches)}: {[m.key for m in matches]}")
+    return matches[0]
+
+
+def arxiv_id(item):
+    """Return the arXiv id recorded on the item, without any version suffix."""
+    patterns = [
+        (item.doi, r"10\.48550/arxiv\." + ARXIV_ID),
+        (item.archive_id, r"arxiv:" + ARXIV_ID),
+        (item.url, r"arxiv\.org/(?:abs|pdf|html)/" + ARXIV_ID),
+        (item.extra, r"arxiv:\s*" + ARXIV_ID),
+    ]
+    for value, pattern in patterns:
+        match = re.search(pattern, value or "", re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
