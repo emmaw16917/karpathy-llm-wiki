@@ -1,6 +1,6 @@
-# karpathy-llm-wiki
+# ScholarWiki
 
-**A reusable skill for building Karpathy-style LLM wikis with Claude Code, Cursor, Codex, and other Agent Skills tools.**
+**A paper-centered LLM wiki skill for Claude Code, Cursor, Codex, and other Agent Skills tools.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/emmaw16917/karpathy-llm-wiki?style=social)](https://github.com/emmaw16917/karpathy-llm-wiki)
@@ -8,54 +8,96 @@
 [![Agent Skills](https://img.shields.io/badge/Agent_Skills-compatible-blue)](https://agentskills.io)
 [![Install](https://img.shields.io/badge/Install-npx_add--skill-green)](https://github.com/emmaw16917/karpathy-llm-wiki#install)
 
-<p align="center">
-  <img src="assets/karpathy-tweet.png" alt="Karpathy's tweet about LLM Wiki" width="560">
-</p>
+ScholarWiki turns papers, web pages, and notes into a durable markdown wiki that your agent maintains. Sources go into `raw/`, get compiled into evidence-grounded articles in `wiki/`, and are compared in topic overviews. Questions are answered from the wiki, with citations.
 
-`karpathy-llm-wiki` packages [Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) into one installable [Agent Skills](https://agentskills.io) skill. Your coding agent ingests sources into `raw/`, compiles durable knowledge pages into `wiki/`, answers questions with citations, and lints the wiki for consistency.
+It follows [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and builds on the open-source [`karpathy-llm-wiki`](https://github.com/Astro-Han/karpathy-llm-wiki) skill (MIT). ScholarWiki's focus is different: a paper-first workflow, a stricter evidence chain, and templates designed for reading papers rather than collecting notes.
 
-## About This Fork
+## Why ScholarWiki
 
-This fork of [Astro-Han/karpathy-llm-wiki](https://github.com/Astro-Han/karpathy-llm-wiki) (MIT) adds a paper-centered workflow. The rest of this README describes the upstream project unless a section says otherwise.
-
-- **Extraction:** `llm-wiki-extract` turns Zotero items, arXiv papers, and web pages into `raw/` files. It uses arXiv HTML and LaTeX, then MinerU for PDFs, and Defuddle for web pages, and checks PDF extractions against the text layer.
-- **Wiki structure:** one article per source, named by citekey, one primary topic per problem domain, plus method-comparing overviews and optional concept pages.
-- **Re-extraction:** `--replace` swaps a raw file only after a successful extraction, and records the old file's hash.
-
-To use the extractor, install [uv](https://docs.astral.sh/uv/), copy `config.example.json` to `config.json`, and add your MinerU token. Web pages also need Node.js. Zotero items need the Zotero local API enabled. Install this fork by cloning it into your tool's skill directory, for example `.claude/skills/karpathy-llm-wiki/`.
-
-`--replace` deletes the old raw file, so keep your knowledge base in its own private git repository. Do not store it in this repository.
+- **Paper-first.** Zotero items, arXiv papers, PDFs, and web pages go through `llm-wiki-extract`, which uses arXiv HTML/LaTeX, MinerU, and Defuddle, then checks PDF extractions against the text layer.
+- **Evidence-grounded.** Every number, date, and direct quote must be located in `raw/` before it is written. `scripts/check_evidence.py` re-checks the wiki; contradictions are recorded with Status blocks instead of silently rewritten.
+- **Compounding, not re-searching.** New sources update existing articles, overviews, and cross-links. The wiki is the synthesis; questions cite it.
+- **Paper-reading schema.** Articles ask for a mini-abstract with the headline result, a key-insight callout, prior work and the gap, a derivation chain, an optional formal core, evaluation, and missing evidence.
+- **Tool-agnostic.** One `SKILL.md`, no vendor lock-in. Works with any tool that implements the Agent Skills standard.
 
 ## What Is an LLM Wiki?
 
 An **LLM wiki** is a knowledge system where the LLM maintains structured wiki pages instead of re-searching raw documents on every question. New sources are compiled into durable markdown pages, cross-references are updated over time, and answers cite the wiki pages that already contain the synthesized knowledge.
 
-This skill gives you three operations:
+ScholarWiki gives you four operations:
 
 | Operation | What it does | Output |
 |-----------|--------------|--------|
-| **Ingest** | Collects a source into `raw/`, triages it, then creates or updates wiki articles — or just logs it when nothing is new | New or updated wiki pages |
+| **Ingest** | Extracts a source into `raw/`, triages it, then creates or updates wiki articles — or just logs it when nothing is new | New or updated wiki pages |
 | **Query** | Searches the wiki and answers with citations | Grounded answers linking to markdown pages |
-| **Lint** | Checks index integrity, links, and wiki health | Auto-fixes plus reported issues |
+| **Archive** | Saves a query answer as a point-in-time wiki page | An `[Archived]` page linked from the index |
+| **Lint** | Checks index integrity, links, evidence, and wiki health | Auto-fixes plus reported issues |
 
-See [SKILL.md](SKILL.md) for the full skill specification.
+See [SKILL.md](SKILL.md) for the full specification.
 
-## LLM Wiki vs RAG
+## Quick Start
 
-| Approach | Knowledge lives in | When synthesis happens | Good for |
-|----------|--------------------|------------------------|----------|
-| **RAG** | Raw chunks and embeddings | At query time | Broad retrieval across large corpora |
-| **LLM Wiki** | Curated markdown pages | During ingest and maintenance | Compounding knowledge, summaries, and durable cross-links |
+### 1. Install
 
-This skill is optimized for the wiki model: knowledge that improves over time instead of re-deriving relationships on every query.
+```bash
+npx add-skill emmaw16917/karpathy-llm-wiki
+```
 
-## Usage Stats
+> **Name note:** the project is ScholarWiki; the repository and installable skill keep the `karpathy-llm-wiki` slug so existing installs and links keep working.
 
-Based on a production knowledge base maintained daily since April 2026:
+For the extractor, install [uv](https://docs.astral.sh/uv/), copy `config.example.json` to `config.json`, and add your MinerU token. Web pages need Node.js; Zotero items need the Zotero local API enabled.
 
-- **94** wiki articles across **13** topic directories
-- **99** source materials ingested
-- **87** operation log entries in the last 7 days
+### 2. Ingest your first source
+
+> "Ingest this paper: https://arxiv.org/abs/1706.03762"
+
+The skill extracts it into `raw/<topic>/<citekey>.md`, then compiles or updates the right articles in `wiki/<topic>/`.
+
+### 3. Ask your wiki a question
+
+> "What do I know about attention mechanisms?"
+
+The skill searches the wiki and answers with citations linking back to your markdown pages.
+
+### 4. Keep the wiki healthy
+
+> "Lint my wiki"
+
+Checks for broken links, missing index entries, evidence mismatches, stale cross-references, and related issues.
+
+## How It Works
+
+The core idea from Karpathy: the LLM maintains the wiki while the human focuses on choosing sources and asking good questions.
+
+```text
+your-project/
+├── raw/            ← source material, changed only by logged re-extraction
+│   ├── assets/citekey/
+│   └── topic/
+│       └── citekey.md
+├── wiki/           ← compiled knowledge pages maintained by the LLM
+│   ├── topic/
+│   │   ├── citekey.md
+│   │   ├── overview.md
+│   │   └── concept-name.md
+│   ├── index.md    ← global table of contents
+│   └── log.md      ← append-only operation log
+└── SKILL.md        ← schema layer
+```
+
+The loop is **extract → triage → compile → cascade → log**. Each new source can update multiple pages, strengthen cross-references, and record a contradiction. That is what makes the wiki compound over time.
+
+### The evidence chain
+
+ScholarWiki's central rule is the **grounding invariant**: a load-bearing fact in `wiki/` exists verbatim in the `raw/` files linked by that article. Compile locates every number, date, and quote before writing; lint re-checks the high-signal literals with `scripts/check_evidence.py`. If a source is replaced, `--replace` records the old file's hash, and the articles that cited it are re-checked.
+
+### Paper workflow
+
+- **Extraction routes:** arXiv HTML → public PDF via MinerU → Zotero PDF. Web pages and blog posts use Defuddle.
+- **Verification:** PDF extractions are compared with the text layer. Low-coverage pages, numbers absent from the PDF, and unresolved table or image warnings are surfaced for review.
+- **Compile:** one article per source, named by citekey. A topic gets an `overview.md` when it has a second paper. Concept pages are created only when the user asks or approves a lint suggestion.
+- **Re-extraction:** `--replace` swaps a raw file only after a successful extraction, records the old hash, and flags the articles that need re-checking. Because it deletes the old raw file, keep your knowledge base in its own private git repository; do not store it in this repository.
+- **Templates:** `references/paper-template.md` and `references/overview-template.md` define the article and comparison schemas; the other files in `references/` cover raw files, concepts, indexes, archives, and status blocks.
 
 See [examples/](examples/) for sample wiki pages, source files, and operation logs.
 
@@ -67,52 +109,7 @@ npx add-skill emmaw16917/karpathy-llm-wiki
 
 Works with any tool that supports the [Agent Skills](https://agentskills.io) standard.
 
-## Quick Start
-
-### 1. Ingest your first source
-
-Give the skill a URL, a file, or pasted text:
-
-> "Ingest this article: https://example.com/attention-is-all-you-need"
-
-The skill stores the source in `raw/`, then compiles or updates the right knowledge pages in `wiki/`.
-
-### 2. Ask your wiki a question
-
-> "What do I know about attention mechanisms?"
-
-The skill searches the wiki and answers with citations linking back to your markdown pages.
-
-### 3. Keep the wiki healthy
-
-> "Lint my wiki"
-
-Checks for broken links, missing index entries, stale cross-references, and related issues.
-
-## How the Workflow Works
-
-The core idea from Karpathy: the LLM maintains the wiki while the human focuses on choosing sources and asking good questions.
-
-```text
-your-project/
-├── raw/            ← Source material, changed only by logged re-extraction
-│   ├── assets/citekey/
-│   └── topic/
-│       └── citekey.md
-├── wiki/           ← Compiled knowledge pages maintained by the LLM
-│   ├── topic/
-│   │   ├── citekey.md
-│   │   ├── overview.md
-│   │   └── concept-name.md
-│   ├── index.md    ← Global table of contents
-│   └── log.md      ← Append-only operation log
-```
-
-Each new source can update multiple pages, strengthen cross-references, and record contradictions. That is what makes the wiki compound over time.
-
 ## Tool Compatibility
-
-This skill follows the [agentskills.io](https://agentskills.io) open standard:
 
 | Tool | Install method |
 |------|----------------|
@@ -120,27 +117,13 @@ This skill follows the [agentskills.io](https://agentskills.io) open standard:
 | Cursor | `npx add-skill emmaw16917/karpathy-llm-wiki` |
 | Codex CLI | Copy to `.agents/skills/karpathy-llm-wiki/` |
 | OpenCode | `npx add-skill emmaw16917/karpathy-llm-wiki` |
-| Other tools | Copy `SKILL.md`, `references/`, and `scripts/` into the tool's skill directory |
-
-## FAQ
-
-### What is the difference between an LLM wiki and a personal wiki?
-
-An LLM wiki is maintained by the model. It updates summaries, cross-links, index entries, and contradictions as new material arrives. A normal personal wiki depends on manual editing.
-
-### What sources can I ingest?
-
-Web pages, papers, blog posts, PDFs, markdown files, text files, and pasted text. The skill converts everything into markdown under `raw/` and compiles it into `wiki/`.
-
-### Is this production-ready?
-
-The workflow is based on a real knowledge base with 94 articles and 99 sources maintained daily since April 2026. The repo includes examples, templates, and a design spec.
+| Other tools | Copy `SKILL.md`, `references/`, and `scripts/` into the skill directory |
 
 ## Design Boundaries
 
-Deliberately not built, after three months of production logs and a survey of the ecosystem (LLM Wiki v2, llm-wiki-compiler, OKF, agent-memory literature):
+Deliberately not built:
 
-- **Source-hash freshness tracking** (upstream) — upstream's raw/ is immutable, so hashes guard against events that cannot happen. This fork allows logged re-extraction, and records the replaced file's hash in that file's header and in the log, without any freshness tracking.
+- **Source-hash freshness tracking** — `raw/` is immutable except for logged re-extraction; the replaced file's hash is recorded in its header and the log, without a separate freshness index.
 - **Persisted line-number citations** — every observed fidelity error was "value absent from the source", which a whole-file grep catches. Anchors only disambiguate a failure mode that has not occurred, and the annotation friction makes agents skip the rule.
 - **Numeric confidence or quality scores** — false precision with no calibration behind it. Evidence strength belongs in the prose.
 - **Per-article review dates** — nobody can predict at compile time how fast a domain moves. Maintenance is driven by whole-wiki lint, not per-page timers.
@@ -152,9 +135,11 @@ Deliberately not built, after three months of production logs and a survey of th
 - **OKF conformance** — the spec is a v0.1 draft with a minimal tooling ecosystem. Tracked; will be revisited.
 - **MCP servers, UIs, output subsystems** — outside the boundary of a tool-agnostic skill.
 
-## Inspired By
+## Lineage
 
-Unofficial community implementation of the workflow from [Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The value here is the reusable workflow, prompt structure, and battle-tested knowledge-compilation rules.
+ScholarWiki follows [Andrej Karpathy's LLM Wiki idea](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f): the LLM writes and maintains the wiki; the human reads and asks questions.
+
+It began as a fork of [Astro-Han/karpathy-llm-wiki](https://github.com/Astro-Han/karpathy-llm-wiki) (MIT). The ingest → compile → query → lint loop and the `raw/` + `wiki/` layout come from that project. ScholarWiki's paper-centered extractor, evidence checks, re-extraction flow, and templates are its own.
 
 See also: [lucasastorian/llmwiki](https://github.com/lucasastorian/llmwiki), [atomicmemory/llm-wiki-compiler](https://github.com/atomicmemory/llm-wiki-compiler). We are tracking Google's [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/tree/main/okf) draft and will evaluate compatibility once the spec and tooling mature.
 
