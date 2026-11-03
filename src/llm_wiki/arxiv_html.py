@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
 BLOCK = {"table", "figure", "div", "section", "article", "ul", "ol", "li", "p", "pre", "blockquote",
          "h1", "h2", "h3", "h4", "h5", "h6"}
+LINE_LABEL = re.compile(r"(\d+:?)\s+(.*)")
 OPENER = re.compile(r"(for|foreach|while|if|loop|repeat|function|procedure)\b")
 CLOSER = re.compile(r"(end|endif|endfor|endwhile|endfunction|endprocedure|until)\b")
 MIDDLE = re.compile(r"(else|elif|elseif)\b")
@@ -86,6 +87,7 @@ def _skipped(node):
 class _Renderer:
     def __init__(self, base_url, blocks=()):
         self.base_url = base_url
+        self.plain = False
         self.blocks = list(blocks)
         self.next_block = 0
         self.source_listings = 0
@@ -131,8 +133,9 @@ class _Renderer:
             return f"[{text.strip()}]({urljoin(self.base_url, href)})"
         return text
 
-    @staticmethod
-    def _wrap(text, mark):
+    def _wrap(self, text, mark):
+        if self.plain:  # code blocks show markers literally
+            return text
         lead = text[: len(text) - len(text.lstrip())]
         trail = text[len(text.rstrip()):]
         return f"{lead}{mark}{text.strip()}{mark}{trail}"
@@ -176,7 +179,9 @@ class _Renderer:
         elif node.tag == "figure":
             self._figure(node)
         elif node.has_class("ltx_listing"):
-            lines = [self.text_of(n).replace("**", "") for n in node.walk() if n.has_class("ltx_listingline")]
+            self.plain = True
+            lines = [self.text_of(n) for n in node.walk() if n.has_class("ltx_listingline")]
+            self.plain = False
             lines = [line for line in lines if line]
             from_source = self._indent_from_source(lines)
             if from_source is not None:
@@ -279,7 +284,8 @@ class _Renderer:
                 continue
             parts.append(self.inline(child))
         text = re.sub(r"\s+", " ", "".join(parts)).strip()
-        prefix = f"[{self.text_of(tag)}] " if tag else ""
+        label = self.text_of(tag) if tag else ""
+        prefix = f"{label} " if re.fullmatch(r"\[.*\]", label) else f"[{label}] " if label else ""
         self.out.append(f"- {prefix}{text}")
 
 
@@ -293,7 +299,7 @@ def indent_from_tokens(lines, tokens):
     depth = 0
     position = 0
     for line in lines:
-        match = re.match(r"(\d+:)\s*(.*)", line)
+        match = LINE_LABEL.match(line)
         label, text = (match.group(1) + " ", match.group(2)) if match else ("", line)
         closer = CLOSER.match(text.lower())
         wanted = _closed_block(text.lower()) if closer else None
@@ -346,7 +352,7 @@ def indent_listing(lines):
     balanced = True
     has_blocks = False
     for line in lines:
-        match = re.match(r"(\d+:)\s*(.*)", line)
+        match = LINE_LABEL.match(line)
         label, text = (match.group(1) + " ", match.group(2)) if match else ("", line)
         lowered = text.lower()
         if CLOSER.match(lowered):

@@ -40,7 +40,7 @@ from pathlib import Path
 
 NUMBER_TOKEN_RE = re.compile(
     r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)*(?:\s*[KMB%](?![A-Za-z]))?"
-    r"|\d+(?:\.\d+)*(?:\s*[KMB%](?![A-Za-z]))?)(?![A-Za-z])"
+    r"|\d+(?:\.\d+)*(?:\s*[KMB%](?![A-Za-z]))?)(?![A-Za-z0-9])"
 )
 SUFFIX_RE = re.compile(r"[KMB%]$")
 DATE_RE = re.compile(r"\d{4}-\d{2}(?:-\d{2})?")
@@ -294,7 +294,7 @@ def source_content(path: Path) -> str:
     metadata (Source/Collected/Published) is bookkeeping, not evidence;
     letting it match candidates would false-pass dates and years."""
     document = parse_document(path.read_text(encoding="utf-8"))
-    return normalize("\n".join(document.body))
+    return normalize("\n".join(document.body)).replace("\\%", "%")
 
 
 def check_article(article: Path, root: Path) -> tuple[list[str], list[str]]:

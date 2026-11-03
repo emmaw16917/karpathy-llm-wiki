@@ -91,6 +91,28 @@ class EvidenceFrontMatterTest(unittest.TestCase):
                                   capture_output=True, encoding="utf-8")
         return done.stdout
 
+    def test_multiplier_with_two_decimals_is_not_cut(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "raw").mkdir()
+            (root / "wiki").mkdir()
+            (root / "raw" / "a.md").write_text("# A\n\nA gain of 4.56x overall.\n", encoding="utf-8")
+            (root / "wiki" / "a.md").write_text("# A\n\n> Raw: [a](../raw/a.md)\n\nGain 4.56x.\n", encoding="utf-8")
+            done = subprocess.run([sys.executable, str(ROOT / "scripts" / "check_evidence.py"), str(root)],
+                                  capture_output=True, encoding="utf-8")
+        self.assertIn("0 fidelity suspect", done.stdout)
+
+    def test_latex_percent_in_raw_matches_plain_percent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "raw").mkdir()
+            (root / "wiki").mkdir()
+            (root / "raw" / "a.md").write_text("# A\n\nHigher by $8.7\\%-434.7\\%$ overall.\n", encoding="utf-8")
+            (root / "wiki" / "a.md").write_text("# A\n\n> Raw: [a](../raw/a.md)\n\nUp to 434.7% and 8.7%.\n", encoding="utf-8")
+            done = subprocess.run([sys.executable, str(ROOT / "scripts" / "check_evidence.py"), str(root)],
+                                  capture_output=True, encoding="utf-8")
+        self.assertIn("0 fidelity suspect", done.stdout)
+
     def test_front_matter_is_not_evidence(self):
         self.assertIn("1 fidelity suspect", self.run_check("---\npublished: 2019-11-05\n---\n\n"))
 

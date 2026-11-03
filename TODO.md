@@ -6,7 +6,7 @@
 - [ ] Lost ligatures outside the PDF vocabulary: `repair_ligatures` only restores words the PDF text layer confirms. Ambiguous spellings and PDFs that use private-use glyphs (such as `hps` in ACM files) stay unrepaired.
 - [ ] Formula accuracy for the MinerU route: only papers with LaTeX source can be checked strictly; the text layer does not catch wrong subscripts.
 - [ ] Image tables whose PDF caption is not directly above the table stay unfilled and are reported in `Extraction-warnings`.
-- [ ] Pseudocode: support `algorithm2e` and other packages. Only `algorithmic` and `algpseudocode` commands are read from LaTeX source.
+- [ ] Pseudocode: other packages. LaTeX source is read for `algorithmic`, `algpseudocode`, and `algorithm2e`; custom `\SetKw` block commands are not.
 - [ ] Review flagged pages visually: render pages that verification flags and check them against the Markdown.
 
 ## Routes
@@ -15,7 +15,6 @@
 - [ ] Publisher HTML.
 - [ ] Better public PDF discovery: OpenAlex misses PDFs that are public, such as VLDB.
 - [ ] Retry a public PDF once when MinerU reports `failed to read file`, before falling back to upload.
-- [ ] Normalize LaTeX in `check_evidence.py`, so `99.9\%` in raw matches `99.9%` in an article.
 
 ## Packaging
 

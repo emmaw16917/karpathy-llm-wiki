@@ -146,6 +146,22 @@ These are not mutually exclusive. A single source may warrant merging into one a
 
 **Source fidelity.** Every number, date, and direct quote must be located in the raw file (grep or read) *before* it is written; write the value exactly as found — if the source says 42K, write 42K, not 42,000. Derived values (sums, deltas, counts you computed) must show their components so each component is findable in raw. If you cannot locate a value, do not write its exact form; drop it or state it without precision.
 
+#### Papers and topics
+
+Write wiki articles in English, staying close to the paper's own wording.
+
+**Topics.** A topic is a problem domain: the problem a paper solves, not the method it uses. A paper applying learned indexes to log compression belongs to `log-compression`. Do not add subtopics by default; group approaches as sections inside the overview. If one direction outgrows its overview, ask the user before splitting it.
+
+**Choosing a topic.** Each paper has exactly one primary topic, chosen by its core contribution and main evaluation metric. If that is unclear, ask the user. Record a second domain in `also` only when the paper truly solves that problem too; that domain's overview then gets a short section linking to the article, without repeating it. Do not mention a paper in a method domain's overview unless it advances that method.
+
+**Paper articles.** Follow `references/paper-template.md`, at `wiki/<topic>/<citekey>.md`. Keep each paper's specifics here: its method, its experiments, and its results. Keep your own analysis in Limitations and Open Doubts, separate from the authors' claims.
+
+**Topic overviews.** Follow `references/overview-template.md`, at `wiki/<topic>/overview.md`. Create one when a topic gets its second paper, and update it with each later paper. Place content with this test: if a new paper could change a statement, it belongs in the overview; otherwise it belongs in the paper article.
+
+Overviews compare methods and evaluation design only. Do not put experimental results in an overview, and never rank methods across papers: datasets, versions, kernels, and environments differ. Link to the articles for numbers.
+
+**Non-paper sources** follow the general article format below.
+
 See `references/article-template.md` for article format. Key points:
 - Sources field: author, organization, or publication name + date, semicolon-separated.
 - Raw field: markdown links to raw/ files, semicolon-separated.
