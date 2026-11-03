@@ -59,6 +59,26 @@ class PageTest(unittest.TestCase):
         self.assertIn("![c](https://o/y.png)", page.markdown)
 
 
+class DateFromUrlTest(unittest.TestCase):
+    def test_month_name_day(self):
+        self.assertEqual(web.date_from_url("https://simonwillison.net/2024/Mar/4/claude-3/"), "2024-03-04")
+
+    def test_numeric_month_and_day(self):
+        self.assertEqual(web.date_from_url("https://a.org/blog/2023/01/02/post.html"), "2023-01-02")
+        self.assertEqual(web.date_from_url("https://a.org/2023/7/9"), "2023-07-09")
+
+    def test_year_and_month_only(self):
+        self.assertEqual(web.date_from_url("https://a.org/2022/11/post"), "2022-11")
+
+    def test_ignores_invalid_dates_and_other_paths(self):
+        for url in ("https://a.org/2024/13/01/x", "https://a.org/2024/00/10/x", "https://a.org/2024/05/32/x",
+                    "https://a.org/posts/hello", "https://a.org/1999/09/09/x"):
+            self.assertEqual(web.date_from_url(url), "", url)
+
+    def test_query_string_is_not_a_date(self):
+        self.assertEqual(web.date_from_url("https://a.org/page?date=2024/03/04"), "")
+
+
 class DataImageTest(unittest.TestCase):
     def test_embedded_image_is_saved_to_assets(self):
         data = base64.b64encode(b"PNGDATA").decode()
@@ -107,6 +127,16 @@ class RouteTest(unittest.TestCase):
                      "> Extractor: defuddle (url)", "Body 1.5"):
             self.assertIn(line, text)
         self.assertNotIn("Verification", text)
+
+    def test_url_date_fills_missing_publication_date(self):
+        page = web.Page("My Post", "Ann Lee", "", "Ann's Blog", "Body 1.5\n")
+        with mock.patch.object(cli.web, "from_url", return_value=page):
+            code = cli.main(["--url", "https://a.org/2024/03/04/my-post", "--config", str(self.root / "none"),
+                             "--out", str(self.root / "raw" / "blogs")])
+        self.assertEqual(code, 0)
+        text = self.read("leeMyPost2024.md")
+        self.assertIn("published: 2024-03-04", text)
+        self.assertIn('citekey: "leeMyPost2024"', text)
 
     def test_zotero_snapshot_is_preferred_and_good_key_kept(self):
         item = self.web_item(citation_key="leePost2024", authors=["Zoe Ng"], parsed_date="2020-01-02")

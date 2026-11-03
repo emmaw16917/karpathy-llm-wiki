@@ -11,8 +11,6 @@
 
 ## Routes
 
-- [ ] Web publication dates: Defuddle often finds none, as on simonwillison.net. Try dates in the URL.
-
 - [ ] arXiv LaTeX through Pandoc, for papers with source but no HTML.
 - [ ] Publisher HTML.
 - [ ] Better public PDF discovery: OpenAlex misses PDFs that are public, such as VLDB.

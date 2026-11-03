@@ -356,7 +356,7 @@ def _from_web(item, url, config):
         raise NoRoute("the Zotero item has no snapshot and no URL")
     title = (web.clean_title(item.title) if item else "") or page.title
     authors = (item.authors if item else []) or ([page.author] if page.author else [])
-    date_value = (metadata.published(item) if item else "") or page.published
+    date_value = (metadata.published(item) if item else "") or page.published or web.date_from_url(source)
     extraction = Extraction(title, _strip_title(page.markdown, title), source, f"defuddle ({how})", date_value)
     extraction.fields = {
         "zotero_key": item.key if item else "", "title": title, "authors": authors, "published": date_value,

@@ -20,6 +20,12 @@ from . import net
 DEFUDDLE = "defuddle@0.19.6"
 INVISIBLE = re.compile(r"[​-‏‪-‮⁠-⁯﻿]")
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+URL_DATE = re.compile(
+    r"/(20\d{2})/(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*|(\d{1,2}))/(\d{1,2})(?:/|$)",
+    re.IGNORECASE)
+URL_MONTH = re.compile(r"/(20\d{2})/(\d{1,2})(?:/|$)")
+MONTHS = {name: number for number, name in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), 1)}
 IMAGE = re.compile(r"(!\[.*?\]\()([^)\s]+)\)")
 USER_AGENT = "Mozilla/5.0 (compatible; llm-wiki-extract/0.1)"
 
@@ -39,6 +45,24 @@ class Page:
 
 def clean_title(title):
     return INVISIBLE.sub("", title or "").strip()
+
+
+def date_from_url(url):
+    """Return the date a URL path encodes, such as /2024/Mar/4/, or ''."""
+    path = urllib.parse.urlsplit(url).path + "/"
+    match = URL_DATE.search(path)
+    if match:
+        year, month_name, month_number, day = match.groups()
+        month = MONTHS[month_name.lower()] if month_name else int(month_number)
+        if 1 <= month <= 12 and 1 <= int(day) <= 31:
+            return f"{year}-{month:02d}-{int(day):02d}"
+        return ""
+    match = URL_MONTH.search(path)
+    if match:
+        year, month = int(match.group(1)), int(match.group(2))
+        if 1 <= month <= 12:
+            return f"{year}-{month:02d}"
+    return ""
 
 
 def _date(value):
